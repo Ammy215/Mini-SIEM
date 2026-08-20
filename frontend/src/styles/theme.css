@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Mini SIEM dark cyber theme, mapped onto shadcn's semantic tokens.
+       Source hex palette (CLAUDE.md): bg-primary #050d1a, bg-secondary #0a1628,
+       bg-tertiary #0f1e35, bg-border #1a2d4a, accent-cyan #00d4ff,
+       accent-green #00ff88, accent-amber #ffb800, accent-red #ff3366,
+       accent-purple #8b5cf6, text-primary #e2e8f0, text-secondary #64748b.
+       Values are complete hsl() colors (not bare triplets) so they also work
+       inside color-mix()/color-mix-based hover states shadcn components use. */
+    --background: hsl(217 68% 6%);
+    --foreground: hsl(214 32% 91%);
+
+    --card: hsl(216 60% 10%);
+    --card-foreground: hsl(214 32% 91%);
+
+    --popover: hsl(216 56% 13%);
+    --popover-foreground: hsl(214 32% 91%);
+
+    --primary: hsl(190 100% 50%);
+    --primary-foreground: hsl(217 68% 6%);
+
+    --secondary: hsl(216 56% 13%);
+    --secondary-foreground: hsl(214 32% 91%);
+
+    --muted: hsl(216 56% 13%);
+    --muted-foreground: hsl(215 16% 47%);
+
+    --accent: hsl(258 90% 66%);
+    --accent-foreground: hsl(214 32% 91%);
+
+    --destructive: hsl(345 100% 60%);
+    --destructive-foreground: hsl(214 32% 91%);
+
+    --border: hsl(216 48% 20%);
+    --input: hsl(216 48% 20%);
+    --ring: hsl(190 100% 50%);
+
+    --radius: 0.5rem;
+
+    /* Raw accent tokens for verdict colors / charts, used directly (not through the
+       primary/secondary/accent semantic roles above). */
+    --cyan: hsl(190 100% 50%);
+    --siem-green: hsl(152 100% 50%);
+    --amber: hsl(43 100% 50%);
+    --siem-red: hsl(345 100% 60%);
+    --purple: hsl(258 90% 66%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  code,
+  .font-mono {
+    font-feature-settings: "tnum";
+  }
+}
+
+@keyframes pulse-critical {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 1.5s ease-in-out infinite;
+}
