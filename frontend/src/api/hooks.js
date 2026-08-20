@@ -124,10 +124,13 @@ export function useAuditLog(filters = {}) {
   });
 }
 
-export function useSetupValidate() {
+// Admin-only endpoint — pass enabled=false for non-admins so we don't fire a
+// request that will 403 (and log a console error) on every page load.
+export function useSetupValidate(enabled = true) {
   return useQuery({
     queryKey: ["setup", "validate"],
     queryFn: async () => (await api.get("/api/setup/validate")).data,
+    enabled,
   });
 }
 

@@ -73,10 +73,14 @@ async def register(body: RegisterRequest, request: Request):
 
         async with conn.transaction():
             try:
+                # Self-registered accounts land INACTIVE and cannot log in until an
+                # admin approves them via PUT /api/admin/users/{id} {"is_active": true}.
+                # Without this, anyone who finds the public URL could self-register a
+                # viewer account and read every event, alert, incident and rule.
                 user_id = await conn.fetchval(
                     """
-                    INSERT INTO users (email, password_hash, full_name)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO users (email, password_hash, full_name, is_active)
+                    VALUES ($1, $2, $3, FALSE)
                     RETURNING id
                     """,
                     body.email,
@@ -97,7 +101,7 @@ async def register(body: RegisterRequest, request: Request):
         await log_action(
             conn,
             user_id=user_id,
-            action="user_registered",
+            action="user_registered_pending",
             detail={"email": body.email},
             ip_address=ip_address,
             user_agent=user_agent,
@@ -149,7 +153,13 @@ async def login(body: LoginRequest, request: Request, response: Response):
                 conn, user_id=row["id"], action="login_blocked_inactive", detail={},
                 ip_address=ip_address, user_agent=user_agent,
             )
-            raise HTTPException(status_code=403, detail="Account disabled")
+            # is_active=FALSE covers both "self-registered, awaiting approval" and
+            # "suspended by an admin" — deliberately one neutral message for both, so
+            # the response doesn't reveal which case applies.
+            raise HTTPException(
+                status_code=403,
+                detail="Account is not active. An administrator must approve or re-enable it.",
+            )
 
         if not verify_password(body.password, row["password_hash"]):
             new_count = row["failed_login_count"] + 1

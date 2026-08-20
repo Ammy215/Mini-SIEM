@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from auth.deps import CurrentUser
+from auth.rbac import require_role
 from config import settings
 from database import get_pool
 
@@ -20,8 +22,10 @@ API_KEYS = {
 }
 
 
+# Admin-only: discloses the table inventory, which threat-intel providers are
+# configured, and whether the attack lab is enabled — free recon if left public.
 @router.get("/api/setup/validate")
-async def validate():
+async def validate(current_user: CurrentUser = Depends(require_role("admin"))):
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(

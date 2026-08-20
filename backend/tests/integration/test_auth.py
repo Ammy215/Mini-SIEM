@@ -18,48 +18,91 @@ async def test_user(pool):
             await conn.execute("DELETE FROM users WHERE id = $1", user_id)
 
 
-async def test_register_then_login_then_access_protected_route(client, test_user):
-    r = await client.post("/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]})
-    assert r.status_code == 201
-    assert r.json()["roles"] == ["viewer"]
+async def _approve(pool, email: str) -> None:
+    """Stand-in for an admin approving a pending account
+    (PUT /api/admin/users/{id} with is_active=true)."""
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET is_active = TRUE WHERE email = $1", email)
 
-    r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+
+async def _register_and_approve(client, pool, user) -> None:
+    await client.post("/api/auth/register", json={"email": user["email"], "password": user["password"]})
+    await _approve(pool, user["email"])
+
+
+# --- self-registration is not self-service access ---------------------------
+
+async def test_newly_registered_account_is_inactive_and_cannot_log_in(client, test_user):
+    r = await client.post(
+        "/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]}
+    )
+    assert r.status_code == 201
+    # The account exists but is explicitly not usable yet.
+    assert r.json()["is_active"] is False
+
+    r = await client.post(
+        "/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]}
+    )
+    assert r.status_code == 403
+    assert "not active" in r.json()["detail"].lower()
+
+
+async def test_account_works_once_an_admin_approves_it(client, pool, test_user):
+    await client.post(
+        "/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]}
+    )
+    await _approve(pool, test_user["email"])
+
+    r = await client.post(
+        "/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]}
+    )
     assert r.status_code == 200
     token = r.json()["access_token"]
 
     r = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["email"] == test_user["email"]
+    assert r.json()["roles"] == ["viewer"]
 
+
+# --- core auth behaviour ----------------------------------------------------
 
 async def test_protected_route_rejects_missing_token(client):
     r = await client.get("/api/auth/me")
     assert r.status_code == 401
 
 
-async def test_five_failed_logins_lock_the_account(client, test_user):
-    await client.post("/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]})
+async def test_five_failed_logins_lock_the_account(client, pool, test_user):
+    await _register_and_approve(client, pool, test_user)
 
     for _ in range(5):
-        r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": "wrong-password"})
+        r = await client.post(
+            "/api/auth/login", json={"email": test_user["email"], "password": "wrong-password"}
+        )
         assert r.status_code == 401
 
-    r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+    r = await client.post(
+        "/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]}
+    )
     assert r.status_code == 423
 
 
-async def test_viewer_role_is_blocked_from_admin_route(client, test_user):
-    await client.post("/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]})
-    r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+async def test_viewer_role_is_blocked_from_admin_route(client, pool, test_user):
+    await _register_and_approve(client, pool, test_user)
+    r = await client.post(
+        "/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]}
+    )
     token = r.json()["access_token"]
 
     r = await client.get("/api/admin/users", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
 
 
-async def test_refresh_cookie_issues_a_new_access_token(client, test_user):
-    await client.post("/api/auth/register", json={"email": test_user["email"], "password": test_user["password"]})
-    login = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+async def test_refresh_cookie_issues_a_new_access_token(client, pool, test_user):
+    await _register_and_approve(client, pool, test_user)
+    login = await client.post(
+        "/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]}
+    )
     assert login.status_code == 200
 
     r = await client.post("/api/auth/refresh")

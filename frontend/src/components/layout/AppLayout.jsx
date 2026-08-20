@@ -83,8 +83,11 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const { data: validate } = useSetupValidate();
   const isAdmin = user?.roles?.includes("admin");
+  // /api/setup/validate is admin-only, so the Attack Lab nav item is only
+  // discoverable by admins now. Acceptable: it's a dev-only feature and the
+  // routes themselves stay gated by ENABLE_ATTACK_LAB regardless of role.
+  const { data: validate } = useSetupValidate(isAdmin);
   let navItems = validate?.attack_lab_enabled ? [...NAV_ITEMS, ATTACK_LAB_ITEM] : NAV_ITEMS;
   if (isAdmin) navItems = [...navItems, ADMIN_ITEM];
   const currentLabel = navItems.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label;

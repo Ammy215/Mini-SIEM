@@ -1,4 +1,5 @@
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -94,7 +95,7 @@ async def create_user(body: AdminUserCreate, request: Request, current_user: Cur
 
 @router.put("/api/admin/users/{user_id}", response_model=AdminUserOut)
 async def update_user(
-    user_id: str, body: AdminUserUpdate, request: Request,
+    user_id: UUID, body: AdminUserUpdate, request: Request,
     current_user: CurrentUser = Depends(require_role("admin")),
 ):
     pool = get_pool()
@@ -136,7 +137,7 @@ async def update_user(
 
 
 @router.post("/api/admin/users/{user_id}/suspend", response_model=AdminUserOut)
-async def suspend_user(user_id: str, request: Request, current_user: CurrentUser = Depends(require_role("admin"))):
+async def suspend_user(user_id: UUID, request: Request, current_user: CurrentUser = Depends(require_role("admin"))):
     pool = get_pool()
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")

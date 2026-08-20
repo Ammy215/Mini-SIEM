@@ -22,7 +22,8 @@ function KeyRow({ name, present }) {
 
 export default function Settings() {
   const { user } = useAuth();
-  const { data: validate } = useSetupValidate();
+  const isAdmin = user?.roles?.includes("admin");
+  const { data: validate } = useSetupValidate(isAdmin);
 
   return (
     <div className="space-y-6">
@@ -48,23 +49,25 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Threat Intel API Keys</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between py-1.5 text-sm border-b border-border">
-            <span className="text-muted-foreground">Database</span>
-            <span className={validate?.database === "connected" ? "text-siem-green" : "text-destructive"}>
-              {validate?.database ?? "—"}
-            </span>
-          </div>
-          {validate?.api_keys_present &&
-            Object.entries(validate.api_keys_present).map(([name, present]) => (
-              <KeyRow key={name} name={name} present={present} />
-            ))}
-        </CardContent>
-      </Card>
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Threat Intel API Keys</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between py-1.5 text-sm border-b border-border">
+              <span className="text-muted-foreground">Database</span>
+              <span className={validate?.database === "connected" ? "text-siem-green" : "text-destructive"}>
+                {validate?.database ?? "—"}
+              </span>
+            </div>
+            {validate?.api_keys_present &&
+              Object.entries(validate.api_keys_present).map(([name, present]) => (
+                <KeyRow key={name} name={name} present={present} />
+              ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
