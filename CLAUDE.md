@@ -661,6 +661,15 @@ npm run dev                     # → http://localhost:5173
 
 ---
 
+## 🔮 Future upgrades — OUT OF SCOPE
+
+`FUTURE_UPGRADES.md` records deliberate v2 ideas and accepted limitations
+(currently: multi-tenancy, and session/token revocation). Everything in that
+file is explicitly **not** in scope — do not implement any of it unless asked
+directly. Read it only if a request touches one of those areas.
+
+---
+
 ## 🚫 / ✅ Rules carried from CLAUDE_CONTEXT
 
 No Docker. No mock data in the product (fixtures in unit tests only). Phase by
