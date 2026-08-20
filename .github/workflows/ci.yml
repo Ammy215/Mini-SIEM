@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then python -m pytest tests -v; else echo "No tests yet — Phase 0 stub"; fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then npm install; fi
+      - name: Run tests
+        run: |
+          if [ -f package.json ]; then npm test --if-present; else echo "No frontend yet — Phase 0 stub"; fi
