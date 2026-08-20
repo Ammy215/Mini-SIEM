@@ -27,3 +27,17 @@ def severity_for_score(score: int) -> str:
 def score_alert(signals: list[str]) -> tuple[int, str]:
     score = min(100, sum(THREAT_WEIGHTS.get(signal, 0) for signal in signals))
     return score, severity_for_score(score)
+
+
+SEVERITY_ORDER = ["low", "medium", "high", "critical"]
+
+
+def severity_rank(severity: str) -> int:
+    try:
+        return SEVERITY_ORDER.index(severity)
+    except ValueError:
+        return 0
+
+
+def max_severity(a: str, b: str) -> str:
+    return a if severity_rank(a) >= severity_rank(b) else b

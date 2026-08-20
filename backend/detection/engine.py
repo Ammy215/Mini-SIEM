@@ -1,4 +1,4 @@
-from detection import signature, threshold
+from detection import correlate, signature, threshold
 
 
 async def seed_all(conn) -> None:
@@ -9,4 +9,5 @@ async def seed_all(conn) -> None:
 async def run_all(conn) -> dict[str, int]:
     results = await threshold.run_all(conn)
     results.update(await signature.run_all(conn))
+    results.update(await correlate.run_all(conn))
     return results

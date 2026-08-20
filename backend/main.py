@@ -9,7 +9,7 @@ from config import settings
 from database import connect, disconnect
 from detection import engine
 from detection.scheduler import run_scheduler_loop
-from routers import admin, auth, detect, enrich, health, ingest, setup
+from routers import admin, auth, detect, enrich, health, incidents, ingest, setup
 
 
 @asynccontextmanager
@@ -45,3 +45,4 @@ app.include_router(admin.router)
 app.include_router(ingest.router)
 app.include_router(detect.router)
 app.include_router(enrich.router)
+app.include_router(incidents.router)
