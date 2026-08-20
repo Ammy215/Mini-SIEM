@@ -85,3 +85,76 @@ Suspending sets `is_active = FALSE`, and `POST /api/auth/refresh` **does**
 re-check `is_active` against the database — so suspension immediately kills the
 attacker's ability to mint new access tokens. Their existing access token still
 works until it expires (≤30 min), but it cannot be renewed.
+
+---
+
+## 3. Smaller known limitations
+
+Each of these is understood, accepted for v1, and small enough to fix on its own.
+Roughly ordered by how much they'd matter on a public deployment.
+
+### 3.1 Rate limiter is in-memory (single-process, resets on restart)
+
+`auth/rate_limit.py` and `middleware/global_rate_limit.py` keep their sliding
+windows in a process-local dict. Consequences:
+
+- Every restart clears all buckets. On Render's free tier — where the service
+  sleeps when idle and cold-starts on the next request — an attacker could
+  reset their own limit just by pausing.
+- It only works correctly with **one** backend process. Scaling to multiple
+  instances or workers would give each its own independent counter, multiplying
+  the effective limit by the instance count.
+
+Deliberate for v1 (the stack is locked to "no Redis"). The fix, if the app ever
+scales out, is a shared store — Redis, or a Postgres table with a TTL sweep.
+
+### 3.2 User enumeration via registration
+
+`POST /api/auth/register` returns `409 Email already registered` for a duplicate
+address, which lets anyone test whether a given email has an account. Login
+itself is already safe (a generic 401 plus `verify_dummy()` for timing parity in
+`auth/password.py`) — registration is the remaining leak.
+
+The fix is to return the same generic accepted-response either way, which costs
+legitimate users a clear "you already have an account" message. Worth doing
+alongside a real signup/approval UX rather than in isolation.
+
+### 3.3 No password-reset UI
+
+Admin-driven reset works (`PUT /api/admin/users/{id}` with `password`) but is
+API-only — the Admin page has no control for it, so it currently requires curl
+or `/docs`. There is still no self-service "forgot password" flow at all, which
+would need an email provider and is a much bigger piece of work.
+
+### 3.4 No user-deletion endpoint
+
+There is no `DELETE /api/admin/users/{id}`. Admins can suspend
+(`is_active = FALSE`) but not remove. Actual deletion currently requires direct
+SQL, and has to clear `audit_log.user_id` first because of the foreign key —
+which is arguably the real design question: deleting a user destroys their audit
+trail. A proper fix is probably soft-delete, or `ON DELETE SET NULL` on
+`audit_log.user_id` to preserve history.
+
+### 3.5 `react-router-dom` v6 has open moderate advisories
+
+`npm audit` reports two moderate issues (open redirect via backslash in `<Link>`
+/ `useNavigate`, and constructor injection via `deserializeErrors()` in SSR
+hydration). The only fix `npm` offers is `react-router-dom@7`, a breaking major
+upgrade. The SSR advisory doesn't apply — this is a pure client-side SPA with no
+server-side rendering. Deferred as a scheduled dependency upgrade rather than a
+rushed pre-deploy change.
+
+### 3.6 Frontend ships as one 898 KB bundle
+
+`npm run build` emits a single ~898 KB JS chunk (~269 KB gzipped) and Vite warns
+about it. Fine functionally, but it means the whole app — Recharts included —
+downloads before the login screen renders. The fix is route-level `React.lazy()`
+code splitting, or `manualChunks` to separate the charting library.
+
+### 3.7 SSH parser assumes the current year
+
+`parsers/ssh.py` parses syslog-style timestamps (`Jan 10 10:00:01`) that carry no
+year, and fills in the current one. Two consequences: logs that span a New Year
+boundary get mis-dated, and Python 3.15 will change `strptime`'s behaviour here
+(it already emits a `DeprecationWarning`, visible in every test run). The fix is
+to pass an explicit year rather than relying on the default.
