@@ -10,6 +10,13 @@ logger = logging.getLogger(__name__)
 
 ABUSEIPDB_BAD_THRESHOLD = 80
 
+# A single OTX pulse means almost nothing on its own — pulses are community
+# submitted and extremely noisy. Measured against real traffic: Google's and
+# Anthropic's own IPs carry 6-7 pulses each, including entries whose titles name
+# a completely different IP. So a pulse only counts as a signal when there are
+# several of them, or when AbuseIPDB independently reports some abuse.
+OTX_PULSE_THRESHOLD = 3
+
 
 def _is_public(ip: str) -> bool:
     try:
@@ -30,6 +37,45 @@ async def _get_or_fetch(conn, ip: str, provider_name: str, query_fn) -> dict:
     if "error" not in data:
         await set_cached(conn, ip, "ip", provider_name, data)
     return data
+
+
+def evaluate_signals(abuse_data: dict, otx_data: dict) -> tuple[list[str], list[str], dict]:
+    """Decide which threat-intel signals an IP earns.
+
+    Returns (signals, suppressed_reasons, observed_values). Pure and provider-
+    shape tolerant — both providers can return partial data or nothing at all.
+    """
+    signals: list[str] = []
+    suppressed: list[str] = []
+
+    raw_score = abuse_data.get("abuse_confidence_score")
+    abuse_score = raw_score if isinstance(raw_score, (int, float)) else None
+    # AbuseIPDB flags known-good infrastructure (major clouds, public resolvers).
+    # We already fetched this field and previously ignored it.
+    is_whitelisted = abuse_data.get("is_whitelisted") is True
+
+    if abuse_score is not None and abuse_score > ABUSEIPDB_BAD_THRESHOLD:
+        signals.append("known_bad_ip")
+
+    raw_pulses = otx_data.get("pulse_count")
+    pulse_count = raw_pulses if isinstance(raw_pulses, (int, float)) else None
+
+    if pulse_count is not None and pulse_count > 0:
+        if is_whitelisted:
+            suppressed.append("otx_pulse_match: AbuseIPDB-whitelisted infrastructure")
+        elif pulse_count >= OTX_PULSE_THRESHOLD or (abuse_score or 0) > 0:
+            signals.append("otx_pulse_match")
+        else:
+            suppressed.append(
+                f"otx_pulse_match: only {int(pulse_count)} pulse(s) and no AbuseIPDB corroboration"
+            )
+
+    observed = {
+        "abuse_confidence_score": abuse_score,
+        "is_whitelisted": is_whitelisted,
+        "otx_pulse_count": pulse_count,
+    }
+    return signals, suppressed, observed
 
 
 async def _mark_checked(conn, alert_id: int, evidence: dict, signals: list[str] | None = None, reason: str | None = None) -> None:
@@ -73,14 +119,13 @@ async def run_all(conn) -> dict[str, int]:
             logger.exception("enrichment lookup failed for alert_id=%s ip=%s", row["id"], ip)
             continue
 
-        signals = []
-        abuse_score = abuse_data.get("abuse_confidence_score")
-        if isinstance(abuse_score, (int, float)) and abuse_score > ABUSEIPDB_BAD_THRESHOLD:
-            signals.append("known_bad_ip")
+        signals, suppressed, observed = evaluate_signals(abuse_data, otx_data)
 
-        pulse_count = otx_data.get("pulse_count")
-        if isinstance(pulse_count, (int, float)) and pulse_count > 0:
-            signals.append("otx_pulse_match")
+        # Recorded either way so an analyst can see what the providers said and
+        # why a signal did or didn't count.
+        evidence["enrichment_observed"] = observed
+        if suppressed:
+            evidence["enrichment_suppressed"] = suppressed
 
         if signals:
             bonus = sum(THREAT_WEIGHTS.get(s, 0) for s in signals)
