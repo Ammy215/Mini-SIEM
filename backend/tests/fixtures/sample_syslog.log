@@ -1,0 +1,5 @@
+<134>Jan 10 10:00:01 fw01 kernel[0]: BLOCKED connection from 203.0.113.5 to 10.0.0.5 port 22
+Jan 10 10:00:05 fw01 cron[9001]: (root) CMD (run-parts /etc/cron.hourly)
+<134>Jan 10 10:00:10 fw01 kernel[0]: BLOCKED connection from 203.0.113.5 to 10.0.0.5 port 3389
+this is not a syslog line at all !!!
+Jan 10 10:00:15 fw01 systemd[1]: Started Session 42 of user deploy.

@@ -1,0 +1,6 @@
+203.0.113.5 - - [10/Jan/2026:10:00:01 +0000] "GET /login HTTP/1.1" 200 512 "-" "Mozilla/5.0"
+203.0.113.5 - - [10/Jan/2026:10:00:02 +0000] "GET /products?id=1' OR 1=1-- HTTP/1.1" 500 128 "-" "sqlmap/1.6"
+198.51.100.9 - - [10/Jan/2026:10:00:03 +0000] "GET /../../etc/passwd HTTP/1.1" 403 256 "-" "Mozilla/5.0"
+198.51.100.9 - - [10/Jan/2026:10:00:04 +0000] "GET /search?q=<script>alert(1)</script> HTTP/1.1" 200 300 "-" "Mozilla/5.0"
+not a valid nginx log line
+203.0.113.5 - - [10/Jan/2026:10:00:06 +0000] "POST /api/login HTTP/1.1" 401 64 "-" "Mozilla/5.0"

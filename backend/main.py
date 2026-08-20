@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import connect, disconnect
-from routers import admin, auth, health, setup
+from routers import admin, auth, health, ingest, setup
 
 
 @asynccontextmanager
@@ -29,3 +29,4 @@ app.include_router(health.router)
 app.include_router(setup.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(ingest.router)

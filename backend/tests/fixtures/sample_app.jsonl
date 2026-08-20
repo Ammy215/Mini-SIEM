@@ -1,0 +1,4 @@
+{"event_time": "2026-01-10T10:00:01+00:00", "username": "alice", "action": "checkout", "source_ip": "192.0.2.10", "message": "user completed checkout"}
+{"event_time": "2026-01-10T10:00:02+00:00", "username": "bob", "action": "login_success", "source_ip": "192.0.2.11"}
+not valid json at all
+{"event_time": "2026-01-10T10:00:04+00:00", "username": "alice", "action": "password_change", "source_ip": "192.0.2.10", "status_code": 200}
