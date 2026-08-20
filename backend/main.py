@@ -9,6 +9,8 @@ from config import settings
 from database import connect, disconnect
 from detection import engine
 from detection.scheduler import run_scheduler_loop
+from middleware.global_rate_limit import GlobalRateLimitMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 from routers import admin, alerts, attack_lab, auth, detect, enrich, events, health, incidents, ingest, rules, setup, stats
 
 
@@ -30,6 +32,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Mini SIEM", lifespan=lifespan)
 
+# Middleware order matters: add_middleware() makes the most-recently-added
+# layer outermost. CORS is added last so it always wraps the response (even a
+# 429 from GlobalRateLimitMiddleware) — otherwise a rate-limited response
+# would reach the browser with no Access-Control-Allow-Origin header and show
+# up as an opaque CORS failure instead of a readable 429.
+app.add_middleware(GlobalRateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],

@@ -7,6 +7,7 @@ from auth.audit import log_action
 from auth.deps import CurrentUser, get_current_user
 from auth.jwt import create_access_token, create_refresh_token, decode_token
 from auth.password import hash_password, verify_dummy, verify_password
+from auth.rate_limit import rate_limit
 from config import settings
 from database import get_pool
 from models.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
@@ -17,6 +18,9 @@ MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth/refresh"
+
+# Shared bucket key: register and login are both pre-auth and equally abuse-prone.
+_auth_rate_limit = rate_limit("auth", limit=10, window_minutes=15)
 
 
 def _cookie_kwargs() -> dict:
@@ -54,7 +58,7 @@ async def _fetch_roles(conn, user_id) -> list[str]:
     return [row["name"] for row in rows]
 
 
-@router.post("/api/auth/register", response_model=UserOut, status_code=201)
+@router.post("/api/auth/register", response_model=UserOut, status_code=201, dependencies=[Depends(_auth_rate_limit)])
 async def register(body: RegisterRequest, request: Request):
     pool = get_pool()
     ip_address = request.client.host if request.client else None
@@ -114,7 +118,7 @@ async def register(body: RegisterRequest, request: Request):
     )
 
 
-@router.post("/api/auth/login", response_model=TokenResponse)
+@router.post("/api/auth/login", response_model=TokenResponse, dependencies=[Depends(_auth_rate_limit)])
 async def login(body: LoginRequest, request: Request, response: Response):
     pool = get_pool()
     ip_address = request.client.host if request.client else None

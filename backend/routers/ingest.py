@@ -4,12 +4,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 
 from auth.deps import CurrentUser
+from auth.rate_limit import rate_limit
 from auth.rbac import require_role
 from database import get_pool
 from models.events import EventIn, IngestResult, UploadResult
 from parsers import app_json, nginx, ssh, syslog
 
 router = APIRouter()
+
+_ingest_rate_limit = rate_limit("ingest", limit=60, window_minutes=1)
 
 _PARSERS = {
     "ssh": ssh,
@@ -53,7 +56,7 @@ async def _insert_events(conn, events: list[dict]) -> int:
     return len(rows)
 
 
-@router.post("/api/ingest", response_model=IngestResult)
+@router.post("/api/ingest", response_model=IngestResult, dependencies=[Depends(_ingest_rate_limit)])
 async def ingest(
     body: EventIn | list[EventIn],
     current_user: CurrentUser = Depends(require_role("analyst", "admin")),
@@ -67,7 +70,7 @@ async def ingest(
     return IngestResult(ingested=inserted)
 
 
-@router.post("/api/logs/upload", response_model=UploadResult)
+@router.post("/api/logs/upload", response_model=UploadResult, dependencies=[Depends(_ingest_rate_limit)])
 async def upload_log(
     file: UploadFile,
     source_type: str = Form(...),

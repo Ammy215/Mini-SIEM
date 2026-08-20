@@ -12,17 +12,40 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mini_siem_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mini_siem_ci
+      SECRET_KEY: ci-only-secret-not-used-anywhere-real
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: ci-only-admin-password-not-real
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Apply schema and seed
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          python scripts/migrate.py
+          python scripts/seed_rules.py
+          python scripts/seed_admin.py
       - name: Run tests
         run: |
-          if find tests -name 'test_*.py' | grep -q .; then python -m pytest tests -v; else echo "No tests yet — Phase 0 stub"; fi
+          if find tests -name 'test_*.py' | grep -q .; then python -m pytest tests -v; else echo "No tests yet"; fi
 
   frontend:
     runs-on: ubuntu-latest
@@ -37,6 +60,6 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -f package.json ]; then npm install; fi
-      - name: Run tests
+      - name: Build
         run: |
-          if [ -f package.json ]; then npm test --if-present; else echo "No frontend yet — Phase 0 stub"; fi
+          if [ -f package.json ]; then npm run build; else echo "No frontend yet"; fi

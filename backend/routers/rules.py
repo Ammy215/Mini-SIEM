@@ -1,7 +1,8 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from auth.audit import log_action
 from auth.deps import CurrentUser, get_current_user
 from auth.rbac import require_role
 from database import get_pool
@@ -32,9 +33,13 @@ async def list_rules(current_user: CurrentUser = Depends(get_current_user)):
 async def update_rule(
     rule_id: int,
     body: RuleUpdate,
+    request: Request,
     current_user: CurrentUser = Depends(require_role("analyst", "admin")),
 ):
     pool = get_pool()
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
     async with pool.acquire() as conn:
         existing = await conn.fetchrow("SELECT * FROM rules WHERE id = $1", rule_id)
         if existing is None:
@@ -53,20 +58,36 @@ async def update_rule(
             rule_id, body.title, body.description, body.severity,
             json.dumps(body.definition) if body.definition is not None else None,
         )
+
+        await log_action(
+            conn, user_id=current_user.id, action="rule_updated",
+            detail={"rule_id": rule_id, "rule_key": row["rule_key"], **body.model_dump(exclude_none=True)},
+            ip_address=ip_address, user_agent=user_agent,
+        )
     return _row_to_rule(row)
 
 
 @router.post("/api/rules/{rule_id}/toggle", response_model=ToggleResult)
 async def toggle_rule(
     rule_id: int,
+    request: Request,
     current_user: CurrentUser = Depends(require_role("analyst", "admin")),
 ):
     pool = get_pool()
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "UPDATE rules SET enabled = NOT enabled WHERE id = $1 RETURNING id, enabled",
+            "UPDATE rules SET enabled = NOT enabled WHERE id = $1 RETURNING id, rule_key, enabled",
             rule_id,
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Rule not found")
+
+        await log_action(
+            conn, user_id=current_user.id, action="rule_toggled",
+            detail={"rule_id": rule_id, "rule_key": row["rule_key"], "enabled": row["enabled"]},
+            ip_address=ip_address, user_agent=user_agent,
+        )
     return ToggleResult(id=row["id"], enabled=row["enabled"])

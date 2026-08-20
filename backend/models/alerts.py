@@ -1,6 +1,11 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+
+class AlertUpdate(BaseModel):
+    status: Literal["open", "acknowledged", "resolved", "false_positive"]
 
 
 class AlertSummary(BaseModel):
