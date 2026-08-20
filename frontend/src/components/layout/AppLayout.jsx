@@ -14,8 +14,10 @@ import {
   Shield,
   Menu,
   X,
+  FlaskConical,
 } from "lucide-react";
 import { useAuth } from "@/api/AuthContext";
+import { useSetupValidate } from "@/api/hooks";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -29,6 +31,7 @@ const NAV_ITEMS = [
 ];
 
 const ADMIN_ITEM = { to: "/admin", label: "Admin", icon: Users };
+const ATTACK_LAB_ITEM = { to: "/attack-lab", label: "Attack Lab", icon: FlaskConical };
 
 function SidebarContent({ navItems, user, logout, onNavigate }) {
   return (
@@ -80,8 +83,10 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { data: validate } = useSetupValidate();
   const isAdmin = user?.roles?.includes("admin");
-  const navItems = isAdmin ? [...NAV_ITEMS, ADMIN_ITEM] : NAV_ITEMS;
+  let navItems = validate?.attack_lab_enabled ? [...NAV_ITEMS, ATTACK_LAB_ITEM] : NAV_ITEMS;
+  if (isAdmin) navItems = [...navItems, ADMIN_ITEM];
   const currentLabel = navItems.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label;
 
   return (

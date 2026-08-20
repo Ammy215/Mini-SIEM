@@ -9,6 +9,7 @@ import Alerts from "@/pages/Alerts";
 import Incidents from "@/pages/Incidents";
 import Rules from "@/pages/Rules";
 import IpIntel from "@/pages/IpIntel";
+import AttackLab from "@/pages/AttackLab";
 import Admin from "@/pages/Admin";
 import Settings from "@/pages/Settings";
 
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="/incidents" element={<Incidents />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/ip-intel" element={<IpIntel />} />
+        <Route path="/attack-lab" element={<AttackLab />} />
         <Route path="/settings" element={<Settings />} />
         <Route
           path="/admin"

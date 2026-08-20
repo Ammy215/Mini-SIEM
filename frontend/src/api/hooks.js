@@ -130,3 +130,27 @@ export function useSetupValidate() {
     queryFn: async () => (await api.get("/api/setup/validate")).data,
   });
 }
+
+export function useAttackLogin() {
+  return useMutation({
+    mutationFn: async ({ username, password }) =>
+      (await api.post("/api/attack-lab/login", { username, password })).data,
+  });
+}
+
+export function useAttackSearch() {
+  return useMutation({
+    mutationFn: async (q) => (await api.get("/api/attack-lab/search", { params: { q } })).data,
+  });
+}
+
+export function useRunDetection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post("/api/detect/run")).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    },
+  });
+}
