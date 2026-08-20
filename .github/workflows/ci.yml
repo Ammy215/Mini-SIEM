@@ -22,7 +22,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Run tests
         run: |
-          if [ -d tests ]; then python -m pytest tests -v; else echo "No tests yet — Phase 0 stub"; fi
+          if find tests -name 'test_*.py' | grep -q .; then python -m pytest tests -v; else echo "No tests yet — Phase 0 stub"; fi
 
   frontend:
     runs-on: ubuntu-latest
