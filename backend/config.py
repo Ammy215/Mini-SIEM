@@ -25,5 +25,7 @@ class Settings(BaseSettings):
 
     enable_attack_lab: bool = False
 
+    detection_interval_seconds: int = 60
+
 
 settings = Settings()

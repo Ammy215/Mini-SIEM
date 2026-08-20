@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,13 +7,24 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import connect, disconnect
-from routers import admin, auth, health, ingest, setup
+from detection import threshold
+from detection.scheduler import run_scheduler_loop
+from routers import admin, auth, detect, health, ingest, setup
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect()
+    pool = await connect()
+    async with pool.acquire() as conn:
+        await threshold.seed_rules(conn)
+
+    scheduler_task = asyncio.create_task(run_scheduler_loop(pool, settings.detection_interval_seconds))
+
     yield
+
+    scheduler_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await scheduler_task
     await disconnect()
 
 
@@ -30,3 +43,4 @@ app.include_router(setup.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(ingest.router)
+app.include_router(detect.router)
