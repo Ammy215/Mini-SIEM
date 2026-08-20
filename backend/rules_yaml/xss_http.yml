@@ -1,0 +1,12 @@
+title: Cross-Site Scripting (XSS) Attempt in HTTP Request
+rule_key: xss-http-001
+rule_type: signature
+severity: medium
+mitre: T1059.007
+description: Detects <script> tags and onerror= handlers in the request URL/query string.
+logsource: nginx
+detection:
+  field: url
+  contains: ["<script>", "onerror="]
+  condition: any
+  signal: xss_pattern

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import connect, disconnect
-from detection import threshold
+from detection import engine
 from detection.scheduler import run_scheduler_loop
 from routers import admin, auth, detect, health, ingest, setup
 
@@ -16,7 +16,7 @@ from routers import admin, auth, detect, health, ingest, setup
 async def lifespan(app: FastAPI):
     pool = await connect()
     async with pool.acquire() as conn:
-        await threshold.seed_rules(conn)
+        await engine.seed_all(conn)
 
     scheduler_task = asyncio.create_task(run_scheduler_loop(pool, settings.detection_interval_seconds))
 

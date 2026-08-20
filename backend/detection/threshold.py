@@ -1,6 +1,7 @@
 import json
 import logging
 
+from detection.common import insert_alert, iso
 from detection.scorer import score_alert
 
 logger = logging.getLogger(__name__)
@@ -90,20 +91,6 @@ async def _is_suppressed(conn, rule_id: int, window_minutes: int, source_ip: str
     return row is not None
 
 
-async def _insert_alert(conn, *, rule_id, title, mitre_technique, source_ip, threat_score, severity, evidence) -> None:
-    await conn.execute(
-        """
-        INSERT INTO alerts (rule_id, title, severity, mitre_technique, source_ip, threat_score, status, evidence)
-        VALUES ($1, $2, $3, $4, $5, $6, 'open', $7::jsonb)
-        """,
-        rule_id, title, severity, mitre_technique, source_ip, threat_score, json.dumps(evidence),
-    )
-
-
-def _iso(dt) -> str | None:
-    return dt.isoformat() if dt is not None else None
-
-
 async def _evaluate_brute_force(conn, rule) -> int:
     d = rule["def"]
     rows = await conn.fetch(
@@ -126,12 +113,12 @@ async def _evaluate_brute_force(conn, rule) -> int:
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
         score, severity = score_alert(["brute_force_confirmed"])
-        await _insert_alert(
+        await insert_alert(
             conn, rule_id=rule["id"], title=f"Brute force login attempts from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
             evidence={
                 "failed_count": row["cnt"], "usernames": row["usernames"], "event_ids": row["event_ids"],
-                "first_seen": _iso(row["first_seen"]), "last_seen": _iso(row["last_seen"]),
+                "first_seen": iso(row["first_seen"]), "last_seen": iso(row["last_seen"]),
             },
         )
         created += 1
@@ -160,12 +147,12 @@ async def _evaluate_credential_stuffing(conn, rule) -> int:
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
         score, severity = score_alert(["credential_stuffing"])
-        await _insert_alert(
+        await insert_alert(
             conn, rule_id=rule["id"], title=f"Credential stuffing from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
             evidence={
                 "distinct_usernames": row["cnt"], "usernames": row["usernames"], "event_ids": row["event_ids"],
-                "first_seen": _iso(row["first_seen"]), "last_seen": _iso(row["last_seen"]),
+                "first_seen": iso(row["first_seen"]), "last_seen": iso(row["last_seen"]),
             },
         )
         created += 1
@@ -194,12 +181,12 @@ async def _evaluate_port_scan(conn, rule) -> int:
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
         score, severity = score_alert(["port_scan"])
-        await _insert_alert(
+        await insert_alert(
             conn, rule_id=rule["id"], title=f"Port scan from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
             evidence={
                 "distinct_ports": row["cnt"], "ports": row["ports"], "event_ids": row["event_ids"],
-                "first_seen": _iso(row["first_seen"]), "last_seen": _iso(row["last_seen"]),
+                "first_seen": iso(row["first_seen"]), "last_seen": iso(row["last_seen"]),
             },
         )
         created += 1
@@ -228,13 +215,13 @@ async def _evaluate_password_spray(conn, rule) -> int:
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], None, username):
             continue
         score, severity = score_alert(["password_spray_confirmed"])
-        await _insert_alert(
+        await insert_alert(
             conn, rule_id=rule["id"], title=f"Password spray against user '{username}'",
             mitre_technique=rule["mitre_technique"], source_ip=None, threat_score=score, severity=severity,
             evidence={
                 "username": username, "distinct_ips": row["cnt"],
                 "source_ips": [str(ip) for ip in row["source_ips"]], "event_ids": row["event_ids"],
-                "first_seen": _iso(row["first_seen"]), "last_seen": _iso(row["last_seen"]),
+                "first_seen": iso(row["first_seen"]), "last_seen": iso(row["last_seen"]),
             },
         )
         created += 1

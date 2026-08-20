@@ -1,0 +1,12 @@
+title: SQL Injection Attempt in HTTP Request
+rule_key: sqli-http-001
+rule_type: signature
+severity: high
+mitre: T1190
+description: Detects common SQL injection payload shapes in the request URL/query string.
+logsource: nginx
+detection:
+  field: url
+  contains: ["' OR 1=1", "UNION SELECT", "' OR '1'='1", "--", "/*"]
+  condition: any
+  signal: sqli_pattern
