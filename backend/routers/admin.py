@@ -119,9 +119,28 @@ async def update_user(
         if body.role is not None:
             await _set_role(conn, user_id, body.role)
 
+        if body.password is not None:
+            # A reset also clears any active lockout — otherwise the admin hands
+            # over a new password the user still can't log in with.
+            await conn.execute(
+                """
+                UPDATE users
+                SET password_hash = $2, failed_login_count = 0, locked_until = NULL
+                WHERE id = $1
+                """,
+                user_id, hash_password(body.password),
+            )
+
+        # NEVER spread the raw body into the audit detail — `password` would be
+        # written to audit_log in plaintext and then served by GET /api/admin/audit.
+        detail = body.model_dump(exclude_none=True, exclude={"password"})
+        detail["target_user_id"] = str(user_id)
+        if body.password is not None:
+            detail["password_reset"] = True
+
         await log_action(
             conn, user_id=current_user.id, action="admin_user_updated",
-            detail={"target_user_id": str(user_id), **body.model_dump(exclude_none=True)},
+            detail=detail,
             ip_address=ip_address, user_agent=user_agent,
         )
 
