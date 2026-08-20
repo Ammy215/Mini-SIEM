@@ -323,6 +323,50 @@ attacker campaign is one incident, not 50 separate alerts.
 
 ---
 
+## 🧭 Detection philosophy & known limitations
+
+These are **permanent architectural properties** of this system — what it is by
+design, not bugs and not deferred work. Deferred *features* live in
+`FUTURE_UPGRADES.md`; these are boundaries that stay true no matter how much the
+rule set grows. Know them before claiming what this SIEM can do.
+
+### 1. Rule-based, not anomaly-based
+
+Detection is **entirely** driven by patterns explicitly defined as rules — the
+four threshold rules (brute force, credential stuffing, port scan, password
+spray) and four signature rules (SQLi, XSS, path traversal, scanner UA). The
+engine matches; it does not reason.
+
+**Consequence:** an attack that matches no rule passes through undetected in real
+time. A novel technique, a known technique in an unusual shape, or an attack in a
+protocol we have no rule for produces events but no alert. This is true of
+rule-based SIEMs in general — Splunk and Sentinel have the same property — and is
+not specific to this build being small.
+
+**Mitigation:** every raw event is stored permanently and stays queryable in the
+Events explorer (`GET /api/events`, full-text search included). So an attack that
+fired nothing at the time is still *findable afterwards* — retrospective threat
+hunting works even when live detection was silent. "Nothing alerted" must never be
+read as "nothing happened."
+
+### 2. No anomaly / ML detection
+
+There is **no statistical model of normal**. The system holds no baseline of
+typical volume, timing, geography, or user behaviour, and therefore cannot flag
+anything as suspicious purely for *deviating* from a baseline. It cannot surface a
+hidden or subtle pattern that nobody wrote a rule for.
+
+This is a deliberate scope boundary, not an oversight. Unsupervised anomaly
+detection (Isolation Forest, One-Class SVM, autoencoders) is a fundamentally
+different technique with different data, evaluation, and failure modes — it earns
+its own project rather than being bolted on here.
+
+**That capability is the central design goal of the next portfolio project:
+Network-Anomaly-Detector / NetSentinel.** Do not implement anomaly or ML-based
+detection in Mini SIEM; it belongs there.
+
+---
+
 ## 🔐 Auth & admin model (answering "what is admin / how do I log in")
 
 - **No hardcoded credentials, ever.** Passwords are bcrypt-hashed.
