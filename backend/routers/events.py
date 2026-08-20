@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+import ipaddress
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth.deps import CurrentUser, get_current_user
 from database import get_pool
@@ -28,6 +30,16 @@ async def list_events(
         params.append(action)
         where.append(f"action = ${len(params)}")
     if source_ip:
+        # Validated before it reaches the ${n}::inet cast — an unparseable value
+        # would otherwise raise asyncpg DataError as an unhandled 500. The value
+        # is still passed as a bound parameter either way; this is about
+        # returning a clean error, not about injection.
+        try:
+            ipaddress.ip_address(source_ip)
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="source_ip must be a valid IPv4 or IPv6 address"
+            )
         params.append(source_ip)
         where.append(f"source_ip = ${len(params)}::inet")
     if q:

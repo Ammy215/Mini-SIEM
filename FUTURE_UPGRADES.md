@@ -158,3 +158,24 @@ year, and fills in the current one. Two consequences: logs that span a New Year
 boundary get mis-dated, and Python 3.15 will change `strptime`'s behaviour here
 (it already emits a `DeprecationWarning`, visible in every test run). The fix is
 to pass an explicit year rather than relying on the default.
+
+### 3.8 Unicode bidi overrides can spoof text in the UI
+
+Log content is stored verbatim and rendered by React as escaped text, which is
+correct and safe — no XSS. But *escaped* is not the same as *unambiguous*: a
+value containing a bidirectional control character such as U+202E
+(RIGHT-TO-LEFT OVERRIDE) renders with the following characters reversed.
+
+Verified during adversarial testing: a username stored as `ADVTEST\u202Egnp.exe`
+displays in the Events table as **`ADVTESTexe.png`** — the classic filename
+spoofing trick. The stored value is intact and a database query shows the truth;
+only the rendered view misleads.
+
+Low severity — no code executes and nothing is corrupted — but it matters more
+than usual in a tool whose entire job is showing an analyst what happened. An
+attacker who can get a string into a log field can make it *read* as something
+else in the console.
+
+Fix would be display-layer: strip or visibly escape the Unicode bidi control
+range (U+202A–U+202E, U+2066–U+2069) when rendering log-derived values, ideally
+in one shared cell component rather than per page.

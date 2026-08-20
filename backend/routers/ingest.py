@@ -80,7 +80,11 @@ async def upload_log(
         raise HTTPException(status_code=400, detail=f"Unknown source_type. Expected one of {list(_PARSERS)}")
 
     parser = _PARSERS[source_type]
-    content = (await file.read()).decode("utf-8", errors="replace")
+    # Uploaded files are treated as best-effort text: undecodable bytes become
+    # U+FFFD and NUL bytes are dropped (PostgreSQL cannot store them). A corrupt
+    # file degrades line-by-line rather than failing the whole upload — unlike
+    # /api/ingest, which is a structured API and rejects bad input with a 422.
+    content = (await file.read()).decode("utf-8", errors="replace").replace("\x00", "")
     lines = [line for line in content.splitlines() if line.strip()]
 
     events = []
