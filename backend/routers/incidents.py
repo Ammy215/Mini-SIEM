@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth.deps import CurrentUser, get_current_user
 from database import get_pool
-from models.incidents import AlertSummary, IncidentDetail, IncidentListResponse, IncidentSummary
+from models.alerts import alert_summary_from_row
+from models.incidents import IncidentDetail, IncidentListResponse, IncidentSummary
 
 router = APIRouter()
 
@@ -54,21 +55,13 @@ async def get_incident(incident_id: int, current_user: CurrentUser = Depends(get
 
         alert_rows = await conn.fetch(
             """
-            SELECT id, rule_id, title, severity, mitre_technique, source_ip, threat_score, status, created_at
+            SELECT id, rule_id, incident_id, title, severity, mitre_technique, source_ip, threat_score, status, created_at
             FROM alerts WHERE incident_id = $1 ORDER BY created_at ASC
             """,
             incident_id,
         )
 
-    alerts = [
-        AlertSummary(
-            id=r["id"], rule_id=r["rule_id"], title=r["title"], severity=r["severity"],
-            mitre_technique=r["mitre_technique"],
-            source_ip=str(r["source_ip"]) if r["source_ip"] else None,
-            threat_score=r["threat_score"], status=r["status"], created_at=r["created_at"],
-        )
-        for r in alert_rows
-    ]
+    alerts = [alert_summary_from_row(r) for r in alert_rows]
 
     summary = _to_incident_summary(incident)
     return IncidentDetail(**summary.model_dump(), alerts=alerts)

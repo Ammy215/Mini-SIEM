@@ -2,17 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-
-class AlertSummary(BaseModel):
-    id: int
-    rule_id: int | None
-    title: str
-    severity: str
-    mitre_technique: str | None
-    source_ip: str | None
-    threat_score: int | None
-    status: str
-    created_at: datetime
+from models.alerts import AlertSummary
 
 
 class IncidentSummary(BaseModel):

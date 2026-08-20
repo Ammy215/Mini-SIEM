@@ -31,3 +31,25 @@ class UploadResult(BaseModel):
     parsed: int
     skipped: int
     inserted: int
+
+
+class EventOut(BaseModel):
+    id: int
+    event_time: datetime
+    source_type: str
+    source_ip: str | None
+    dest_ip: str | None
+    dest_port: int | None
+    username: str | None
+    action: str | None
+    status_code: int | None
+    method: str | None
+    url: str | None
+    user_agent: str | None
+    country: str | None
+    raw_message: str | None
+
+
+class EventListResponse(BaseModel):
+    events: list[EventOut]
+    total: int
