@@ -6,6 +6,11 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Events from "@/pages/Events";
 import Alerts from "@/pages/Alerts";
+import Incidents from "@/pages/Incidents";
+import Rules from "@/pages/Rules";
+import IpIntel from "@/pages/IpIntel";
+import Admin from "@/pages/Admin";
+import Settings from "@/pages/Settings";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -19,6 +24,14 @@ function RequireAuth({ children }) {
   }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+  return children;
+}
+
+function RequireAdmin({ children }) {
+  const { user } = useAuth();
+  if (!user?.roles?.includes("admin")) {
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -37,6 +50,18 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/events" element={<Events />} />
         <Route path="/alerts" element={<Alerts />} />
+        <Route path="/incidents" element={<Incidents />} />
+        <Route path="/rules" element={<Rules />} />
+        <Route path="/ip-intel" element={<IpIntel />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <Admin />
+            </RequireAdmin>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
