@@ -2,7 +2,8 @@ import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { useIncidents, useIncident } from "@/api/hooks";
+import { AiSummary } from "@/components/AiSummary";
+import { useIncidents, useIncident, useSummarizeIncident } from "@/api/hooks";
 
 function IncidentAlerts({ incidentId }) {
   const { data, isLoading } = useIncident(incidentId);
@@ -89,6 +90,9 @@ export default function Incidents() {
                     <TableRow>
                       <TableCell colSpan={7} className="p-0">
                         <IncidentAlerts incidentId={incident.id} />
+                        <div className="bg-background/50 px-4 pb-4">
+                          <AiSummary kind="incident" targetId={incident.id} useSummarize={useSummarizeIncident} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}

@@ -157,3 +157,17 @@ export function useRunDetection() {
     },
   });
 }
+
+// Opt-in AI summaries: a mutation (not a query) so nothing is ever sent to the
+// provider automatically — only when the user clicks.
+export function useSummarizeAlert() {
+  return useMutation({
+    mutationFn: async (alertId) => (await api.post(`/api/alerts/${alertId}/summary`)).data,
+  });
+}
+
+export function useSummarizeIncident() {
+  return useMutation({
+    mutationFn: async (incidentId) => (await api.post(`/api/incidents/${incidentId}/summary`)).data,
+  });
+}

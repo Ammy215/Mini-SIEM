@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     nvd_api_key: str = ""
 
     groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
 
     enable_attack_lab: bool = False
 

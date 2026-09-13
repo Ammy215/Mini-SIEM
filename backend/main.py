@@ -11,7 +11,9 @@ from detection import engine
 from detection.scheduler import run_scheduler_loop
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
-from routers import admin, alerts, attack_lab, auth, detect, enrich, events, health, incidents, ingest, rules, setup, stats
+from routers import (
+    admin, ai_summary, alerts, attack_lab, auth, detect, enrich, events, health, incidents, ingest, rules, setup, stats,
+)
 
 
 @asynccontextmanager
@@ -59,6 +61,7 @@ app.include_router(events.router)
 app.include_router(alerts.router)
 app.include_router(stats.router)
 app.include_router(rules.router)
+app.include_router(ai_summary.router)
 
 if settings.enable_attack_lab:
     app.include_router(attack_lab.router)

@@ -179,3 +179,25 @@ else in the console.
 Fix would be display-layer: strip or visibly escape the Unicode bidi control
 range (U+202A–U+202E, U+2066–U+2069) when rendering log-derived values, ideally
 in one shared cell component rather than per page.
+
+### 3.9 AI summaries: prompt injection is mitigated, not eliminated
+
+The opt-in "Summarize with AI" button sends an alert's or incident's evidence to
+Groq. Some of that evidence — URLs, user agents, matched text — is written by the
+attacker, which makes it a prompt-injection channel. Current mitigations:
+
+- Only an allow-list of fields is sent (`ai/summarize.py::build_alert_payload`);
+  never the raw evidence blob, usernames, event ids, or the IP lists stored with
+  threshold alerts.
+- Evidence is fenced between markers the attacker cannot close (`<<<`/`>>>` in
+  the data are neutralised), and the system prompt says the fenced content is data,
+  never instructions.
+- The response is rendered as plain text, so a hostile completion cannot inject
+  markup into the page.
+- Every request is written to `audit_log` *before* the call, since that is the
+  moment evidence leaves the server; the summary text itself is not stored.
+
+What remains: a sufficiently crafted payload can still skew the model's wording
+or assessment — no prompt defence is complete. Summaries are labelled
+AI-generated and must be checked against the evidence shown beside them; they are
+never used to change severity, status, or any detection outcome.

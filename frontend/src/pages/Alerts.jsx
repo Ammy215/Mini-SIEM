@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { motion } from "framer-motion";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Button } from "@/components/ui/button";
+import { AiSummary } from "@/components/AiSummary";
 import { cn } from "@/lib/utils";
-import { useAlerts } from "@/api/hooks";
+import { useAlerts, useSummarizeAlert } from "@/api/hooks";
 
 const STATUSES = ["", "open", "acknowledged", "resolved", "false_positive"];
 const SUMMARY_STATUSES = ["open", "acknowledged", "resolved", "false_positive"];
@@ -50,6 +52,7 @@ function StatusSummary({ activeStatus, onSelect }) {
 export default function Alerts() {
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(0);
+  const [expanded, setExpanded] = useState(null);
 
   const { data, isLoading } = useAlerts({
     ...(status && { status }),
@@ -94,6 +97,7 @@ export default function Alerts() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8"></TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>MITRE</TableHead>
@@ -106,33 +110,48 @@ export default function Alerts() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && alerts.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   No alerts found.
                 </TableCell>
               </TableRow>
             )}
-            {alerts.map((alert) => (
-              <TableRow key={alert.id}>
-                <TableCell className="font-mono text-xs whitespace-nowrap">
-                  {new Date(alert.created_at).toLocaleString()}
-                </TableCell>
-                <TableCell className="max-w-xs truncate">{alert.title}</TableCell>
-                <TableCell className="font-mono text-xs">{alert.mitre_technique ?? "—"}</TableCell>
-                <TableCell className="font-mono">{alert.source_ip ?? "—"}</TableCell>
-                <TableCell className="font-mono">{alert.threat_score ?? "—"}</TableCell>
-                <TableCell>
-                  <SeverityBadge severity={alert.severity} />
-                </TableCell>
-                <TableCell className="capitalize">{alert.status.replace("_", " ")}</TableCell>
-              </TableRow>
-            ))}
+            {alerts.map((alert) => {
+              const isOpen = expanded === alert.id;
+              return (
+                <Fragment key={alert.id}>
+                  <TableRow className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : alert.id)}>
+                    <TableCell>
+                      {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs whitespace-nowrap">
+                      {new Date(alert.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">{alert.title}</TableCell>
+                    <TableCell className="font-mono text-xs">{alert.mitre_technique ?? "—"}</TableCell>
+                    <TableCell className="font-mono">{alert.source_ip ?? "—"}</TableCell>
+                    <TableCell className="font-mono">{alert.threat_score ?? "—"}</TableCell>
+                    <TableCell>
+                      <SeverityBadge severity={alert.severity} />
+                    </TableCell>
+                    <TableCell className="capitalize">{alert.status.replace("_", " ")}</TableCell>
+                  </TableRow>
+                  {isOpen && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="bg-background/50 px-4 py-3">
+                        <AiSummary kind="alert" targetId={alert.id} useSummarize={useSummarizeAlert} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
