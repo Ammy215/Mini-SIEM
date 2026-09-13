@@ -200,6 +200,40 @@ async def test_upload_with_non_utf8_bytes_degrades_gracefully(client, auth):
     assert body["skipped"] == 1
 
 
+async def test_uploaded_nginx_line_with_invalid_ip_is_skipped_not_500(client, auth):
+    """Regression: the parser accepts any token as the IP, and a bad one used to
+    reach the INET column and fail the whole upload with a 500."""
+    raw = b'203.0.113.201 - - [20/Aug/2026:12:00:00 +0000] "GET /ok HTTP/1.1" 200 0 "-" "x"\n'
+    raw += b'not-an-ip - - [20/Aug/2026:12:00:01 +0000] "GET /bad HTTP/1.1" 200 0 "-" "x"\n'
+    r = await client.post(
+        "/api/logs/upload",
+        files={"file": ("bad_ip.log", raw, "text/plain")},
+        data={"source_type": "nginx"},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["total_lines"], body["parsed"], body["skipped"], body["inserted"]) == (2, 1, 1, 1)
+
+
+async def test_uploaded_app_json_with_invalid_ip_or_wrong_type_is_skipped(client, auth):
+    lines = [
+        {"username": f"{MARK}-ok", "action": "login_failed", "source_ip": "203.0.113.201"},
+        {"username": f"{MARK}-badip", "action": "login_failed", "source_ip": "garbage"},
+        {"username": f"{MARK}-badport", "action": "request", "dest_port": "not-a-number"},
+    ]
+    raw = "\n".join(json.dumps(line) for line in lines).encode()
+    r = await client.post(
+        "/api/logs/upload",
+        files={"file": ("bad_app.jsonl", raw, "application/json")},
+        data={"source_type": "app"},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["parsed"], body["skipped"], body["inserted"]) == (1, 2, 1)
+
+
 # --- no input can change the SQL that runs ---------------------------------
 
 @pytest.mark.parametrize(

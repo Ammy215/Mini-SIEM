@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from pydantic import ValidationError
 
 from auth.deps import CurrentUser
 from auth.rate_limit import rate_limit
@@ -93,8 +94,15 @@ async def upload_log(
         parsed = parser.parse_line(line)
         if parsed is None:
             skipped += 1
-        else:
-            events.append(parsed)
+            continue
+        # Run parsed lines through the same EventIn validation as /api/ingest.
+        # Parsers only check shape, so a line like `not-an-ip - - [...]` or an
+        # app-JSON `"source_ip": "garbage"` used to reach the INET column and
+        # fail the whole upload with a 500. One bad line is now just skipped.
+        try:
+            events.append(EventIn(**parsed).model_dump())
+        except ValidationError:
+            skipped += 1
 
     pool = get_pool()
     async with pool.acquire() as conn:
