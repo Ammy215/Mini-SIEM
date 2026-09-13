@@ -11,6 +11,7 @@ import logging
 import httpx
 
 from config import settings
+from detection.mitre import technique_info
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,11 @@ Write three short plain-text sections with no markdown symbols:
 What happened: one or two sentences.
 Why it matters: reference the MITRE ATT&CK technique if one is given.
 Next steps: two or three concrete checks the analyst should do.
+
+The mitre_technique_name and mitre_tactic fields come from this SIEM's own \
+reference data, not from the logs, and are authoritative. When they are present, \
+use that exact technique name and tactic, and never substitute a different name or \
+tactic from memory. If only a technique ID is given, cite the ID without naming it.
 
 Only state what the evidence supports. If something is unknown, say so instead of \
 guessing. Keep the whole answer under 170 words."""
@@ -65,6 +71,13 @@ def build_alert_payload(alert: dict) -> dict:
         "mitre_technique": alert.get("mitre_technique"),
         "source_ip": alert.get("source_ip"),
     }
+
+    # Official ATT&CK name and tactic from local reference data, so the model
+    # never has to recall them (it mislabelled T1059.007 and T1595 when it did).
+    info = technique_info(alert.get("mitre_technique"))
+    if info:
+        payload["mitre_technique_name"] = info["name"]
+        payload["mitre_tactic"] = info["tactic"]
 
     # Signature rules: what matched, and a clipped copy of where it matched.
     if evidence.get("matched_patterns"):
