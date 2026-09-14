@@ -641,7 +641,53 @@ prove detection. *Test:* run each attack → the matching alert appears.
 coverage, unit+integration+e2e, GitHub Actions green. *Test:* whole suite passes
 in CI on push.
 
-**Phase 12 — Deployment.** (below). *Test:* live URL works end-to-end; dev-tools
+### Enterprise-shaped upgrade (added before first deploy)
+
+Phases 0–11 built the core. Before deploying, the ingestion, detection and
+dashboard layers are being upgraded toward how enterprise SIEMs work — still
+rule-based only (see Detection philosophy), still on the locked stack. Each
+phase keeps the app working and has its own test gate and commit.
+
+**Phase 12 — Migration framework.** Versioned forward-only migrations
+(`backend/sql/migrations/NNNN_*.sql|py`, tracked in `schema_migrations`); app
+and tests refuse to start on an out-of-date schema. *Test:* fresh build,
+re-run no-op, data preserved, edited migration refused.
+
+**Phase 13 — Correctness fixes.** Impossible timestamps no longer 500 an
+upload; detection-run lock; enrichment retry on provider failure.
+
+**Phase 14 — Rule persistence + severity.** UI rule edits survive restarts;
+rule severity is a minimum.
+
+**Phase 15 — Universal ingestion.** Parser registry, format auto-detection,
+generic fallback that never drops a line, ingest batches, size caps.
+
+**Phase 16 — Windows Event Logs.** XML/JSON exports (4624/4625/4720/4672/1102…).
+
+**Phase 17 — Firewall + CEF.** iptables/UFW and CEF (Palo Alto/Fortinet/Check Point).
+
+**Phase 18 — Upload UI.**
+
+**Phase 19 — Rule engine v2.** One validated rule language (match / aggregate /
+sequence), alert grouping, the 8 rules migrated onto it.
+
+**Phase 20 — Rules API + builder UI.** Create/test rules in the app (admin-only authoring).
+
+**Phase 21 — Geo enrichment + context signals.** Country data, `after_hours`, `foreign_geo`.
+
+**Phase 22 — New detections.** Brute force → success, Windows account/privilege/
+log-clearing rules, firewall scans.
+
+**Phase 23 — Historical analysis.** Run detection over an uploaded file's own time range.
+
+**Phase 24 — Dashboard analytics.** Time-range picker, login/source/severity
+charts, MITRE ATT&CK matrix, Events filters.
+
+**Phase 25 — Geographic attack map.**
+
+**Phase 26 — Live syslog listener.** Local-lab only, off by default.
+
+**Phase 27 — Deployment.** (below). *Test:* live URL works end-to-end; dev-tools
 secret-leak check passes.
 
 Commit after every phase with a clear prefix: `feat:`, `fix:`, `security:`,

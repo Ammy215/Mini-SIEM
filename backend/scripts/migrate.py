@@ -1,5 +1,7 @@
-"""Applies backend/sql/schema.sql against DATABASE_URL. Safe to re-run —
-every statement in schema.sql uses IF NOT EXISTS / ON CONFLICT."""
+"""Brings the database schema up to date: the v1 baseline (sql/schema.sql),
+then every pending numbered migration in sql/migrations/, each exactly once.
+Safe to re-run — applied migrations are skipped, and one that was edited after
+being applied stops the run rather than being silently re-applied."""
 
 import asyncio
 import sys
@@ -8,17 +10,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database import connect, disconnect  # noqa: E402
-
-SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
+from migrations import apply_all, current_version  # noqa: E402
 
 
 async def main() -> None:
-    schema_sql = SCHEMA_PATH.read_text()
     pool = await connect()
-    async with pool.acquire() as conn:
-        await conn.execute(schema_sql)
-    await disconnect()
-    print(f"Migration applied from {SCHEMA_PATH}")
+    try:
+        async with pool.acquire() as conn:
+            applied = await apply_all(conn)
+            version = await current_version(conn)
+    finally:
+        await disconnect()
+
+    for migration in applied:
+        print(f"applied {migration.label}")
+    if not applied:
+        print("no pending migrations")
+    print(f"schema is at version {version}")
 
 
 if __name__ == "__main__":

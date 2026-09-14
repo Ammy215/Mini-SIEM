@@ -11,6 +11,7 @@ from detection import engine
 from detection.scheduler import run_scheduler_loop
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
+from migrations import assert_schema_current
 from routers import (
     admin, ai_summary, alerts, attack_lab, auth, detect, enrich, events, health, incidents, ingest, rules, setup, stats,
 )
@@ -20,6 +21,9 @@ from routers import (
 async def lifespan(app: FastAPI):
     pool = await connect()
     async with pool.acquire() as conn:
+        # Fail at startup, with the fix in the message, rather than on the
+        # first request that happens to touch a column a migration adds.
+        await assert_schema_current(conn)
         await engine.seed_all(conn)
 
     scheduler_task = asyncio.create_task(run_scheduler_loop(pool, settings.detection_interval_seconds))

@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database import connect, disconnect  # noqa: E402
 from detection import engine  # noqa: E402
 from main import app  # noqa: E402
+from migrations import assert_schema_current  # noqa: E402
 
 # asyncpg connections are bound to the event loop they were created on, so
 # every DB-touching fixture/test in this suite must share one event loop.
@@ -27,6 +28,9 @@ from main import app  # noqa: E402
 async def pool():
     p = await connect()
     async with p.acquire() as seed_conn:
+        # A clear "run scripts/migrate.py" beats dozens of confusing
+        # missing-column failures across the suite.
+        await assert_schema_current(seed_conn)
         await engine.seed_all(seed_conn)
     yield p
     await disconnect()
