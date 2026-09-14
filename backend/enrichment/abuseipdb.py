@@ -1,14 +1,17 @@
 import httpx
 
 from config import settings
+from enrichment.errors import ProviderError, ProviderNotConfigured, provider_http_error
 
 PROVIDER = "abuseipdb"
 _URL = "https://api.abuseipdb.com/api/v2/check"
 
 
 async def query(ip: str) -> dict:
+    """Raises ProviderNotConfigured without an API key, ProviderError when the
+    lookup fails. Callers must pass an already-validated public IP."""
     if not settings.abuseipdb_api_key:
-        return {"error": "no API key configured"}
+        raise ProviderNotConfigured(f"{PROVIDER}: no API key configured")
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -18,9 +21,15 @@ async def query(ip: str) -> dict:
                 params={"ipAddress": ip, "maxAgeInDays": 90},
             )
             resp.raise_for_status()
-            data = resp.json().get("data", {})
+            body = resp.json()
     except httpx.HTTPError as exc:
-        return {"error": str(exc)}
+        raise provider_http_error(PROVIDER, exc) from None
+    except ValueError:
+        raise ProviderError(f"{PROVIDER} returned a response that isn't JSON") from None
+
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict):
+        raise ProviderError(f"{PROVIDER} returned an unexpected response shape")
 
     return {
         "abuse_confidence_score": data.get("abuseConfidenceScore"),

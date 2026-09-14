@@ -11,9 +11,18 @@ transaction, and recorded in schema_migrations with a checksum. An applied
 file that is later edited stops the run instead of silently diverging — the
 fix is always a new migration, never an edit.
 
+Concurrency: two runners (say, two deploys starting at once) are serialised
+with a *transaction-level* advisory lock taken inside each migration's
+transaction. Not a session-level lock: the app reaches Neon through PgBouncer
+in transaction mode, which can run a session lock and its unlock on different
+server connections. A transaction always stays on one.
+
 A .sql file whose first line is `-- migrate:no-transaction` runs outside a
 transaction (needed for CREATE INDEX CONCURRENTLY). Postgres only allows that
-for a single statement, so such a file must contain exactly one.
+for a single statement, so such a file must contain exactly one — and, having
+no transaction to lock in, it relies on the schema_migrations primary key to
+make a concurrent duplicate fail loudly. Write those statements idempotently
+(`IF NOT EXISTS`).
 """
 
 import hashlib
@@ -27,8 +36,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 BASELINE_PATH = BACKEND_DIR / "sql" / "schema.sql"
 MIGRATIONS_DIR = BACKEND_DIR / "sql" / "migrations"
 
-# Any constant works, as long as every migrate run uses the same one: it makes
-# two deploys starting at once wait for each other instead of racing.
+# Any constant works, as long as every migrate run uses the same one.
 _ADVISORY_LOCK_KEY = 7_420_311_001
 
 _FILENAME_RE = re.compile(r"^(\d{4})_([a-z0-9_]+)\.(sql|py)$")
@@ -107,39 +115,19 @@ async def apply_all(
     """Brings the database up to date. Returns the migrations applied by this call."""
     migrations = discover(migrations_dir)
 
-    await conn.execute("SELECT pg_advisory_lock($1::bigint)", _ADVISORY_LOCK_KEY)
-    try:
+    async with conn.transaction():
+        await _lock(conn)
         await conn.execute(baseline_path.read_text(encoding="utf-8"))
         await conn.execute(_BOOTSTRAP_SQL)
-
-        applied = {
-            row["version"]: row["checksum"]
-            for row in await conn.fetch("SELECT version, checksum FROM schema_migrations")
-        }
-
         # Check the whole recorded history before running anything new, so a
         # mismatch never gets a fresh migration stacked on top of it.
-        for migration in migrations:
-            if migration.version in applied and applied[migration.version] != migration.checksum:
-                raise MigrationError(
-                    f"migration {migration.label} was edited after it was applied (checksum mismatch). "
-                    "Never change an applied migration — add a new one instead."
-                )
-        unknown = sorted(set(applied) - {m.version for m in migrations})
-        if unknown:
-            raise MigrationError(
-                f"the database has migrations this code doesn't have: {unknown}. "
-                "Is this checkout older than the database?"
-            )
+        _verify_history(migrations, await _applied_checksums(conn))
 
-        newly_applied = []
-        for migration in migrations:
-            if migration.version not in applied:
-                await _apply_one(conn, migration)
-                newly_applied.append(migration)
-        return newly_applied
-    finally:
-        await conn.execute("SELECT pg_advisory_unlock($1::bigint)", _ADVISORY_LOCK_KEY)
+    newly_applied = []
+    for migration in migrations:
+        if await _apply_one(conn, migration):
+            newly_applied.append(migration)
+    return newly_applied
 
 
 async def assert_schema_current(conn, migrations_dir: Path = MIGRATIONS_DIR) -> None:
@@ -158,23 +146,59 @@ async def assert_schema_current(conn, migrations_dir: Path = MIGRATIONS_DIR) -> 
         )
 
 
-async def _apply_one(conn, migration: Migration) -> None:
-    if migration.kind == "py":
-        up = _load_up(migration)
-        async with conn.transaction():
-            await up(conn)
-            await _record(conn, migration)
-        return
+def _verify_history(migrations: list[Migration], applied: dict[int, str]) -> None:
+    for migration in migrations:
+        if migration.version in applied and applied[migration.version] != migration.checksum:
+            raise MigrationError(
+                f"migration {migration.label} was edited after it was applied (checksum mismatch). "
+                "Never change an applied migration — add a new one instead."
+            )
+    unknown = sorted(set(applied) - {m.version for m in migrations})
+    if unknown:
+        raise MigrationError(
+            f"the database has migrations this code doesn't have: {unknown}. "
+            "Is this checkout older than the database?"
+        )
 
-    sql = migration.path.read_text(encoding="utf-8")
-    if sql.lstrip().startswith(_NO_TRANSACTION_HEADER):
+
+async def _apply_one(conn, migration: Migration) -> bool:
+    """Applies one migration unless it is already recorded. Returns whether
+    this call applied it."""
+    sql = migration.path.read_text(encoding="utf-8") if migration.kind == "sql" else None
+
+    if sql is not None and sql.lstrip().startswith(_NO_TRANSACTION_HEADER):
+        if await _is_applied(conn, migration.version):
+            return False
         await conn.execute(sql)
         await _record(conn, migration)
-        return
+        return True
 
     async with conn.transaction():
-        await conn.execute(sql)
+        await _lock(conn)
+        # Re-checked under the lock: a concurrent runner may have applied it
+        # while this one was waiting.
+        if await _is_applied(conn, migration.version):
+            return False
+        if sql is not None:
+            await conn.execute(sql)
+        else:
+            await _load_up(migration)(conn)
         await _record(conn, migration)
+    return True
+
+
+async def _lock(conn) -> None:
+    # Released automatically when the surrounding transaction ends.
+    await conn.execute("SELECT pg_advisory_xact_lock($1::bigint)", _ADVISORY_LOCK_KEY)
+
+
+async def _applied_checksums(conn) -> dict[int, str]:
+    rows = await conn.fetch("SELECT version, checksum FROM schema_migrations")
+    return {row["version"]: row["checksum"] for row in rows}
+
+
+async def _is_applied(conn, version: int) -> bool:
+    return await conn.fetchval("SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", version)
 
 
 def _load_up(migration: Migration):

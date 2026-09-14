@@ -131,7 +131,9 @@ async def run_all(conn) -> dict[str, int]:
             "def": json.loads(row["definition"]),
         }
         try:
-            results[row["rule_key"]] = await _evaluate_signature_rule(conn, rule)
+            # Own transaction per rule — see threshold.run_all.
+            async with conn.transaction():
+                results[row["rule_key"]] = await _evaluate_signature_rule(conn, rule)
         except Exception:
             logger.exception("signature evaluator failed for rule_key=%s", row["rule_key"])
             results[row["rule_key"]] = 0

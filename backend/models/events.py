@@ -64,6 +64,8 @@ class UploadResult(BaseModel):
     total_lines: int
     parsed: int
     skipped: int
+    # Why lines were skipped, e.g. {"unrecognized_format": 3, "invalid_timestamp": 1}.
+    skipped_reasons: dict[str, int] = Field(default_factory=dict)
     inserted: int
 
 

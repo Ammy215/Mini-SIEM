@@ -1,5 +1,6 @@
 import re
-from datetime import datetime, timezone
+
+from parsers.timeutil import parse_yearless
 
 # <134>Jan 10 10:00:01 host process[1234]: message text here
 # Jan 10 10:00:01 host process[1234]: message text here   (priority prefix optional)
@@ -12,18 +13,15 @@ _LINE_RE = re.compile(
 )
 
 
-def _parse_timestamp(ts: str) -> datetime:
-    parsed = datetime.strptime(ts, "%b %d %H:%M:%S")
-    return parsed.replace(year=datetime.now(timezone.utc).year, tzinfo=timezone.utc)
-
-
 def parse_line(line: str) -> dict | None:
+    """Returns None for non-syslog lines. Raises InvalidTimestamp for a
+    matching line whose date doesn't exist (Feb 30)."""
     match = _LINE_RE.search(line)
     if match is None:
         return None
 
     return {
-        "event_time": _parse_timestamp(match["ts"]),
+        "event_time": parse_yearless(match["ts"]),
         "source_type": "syslog",
         "action": "log",
         "raw_message": line.strip(),

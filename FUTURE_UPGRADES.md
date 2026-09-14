@@ -198,13 +198,17 @@ about it. Fine functionally, but it means the whole app — Recharts included �
 downloads before the login screen renders. The fix is route-level `React.lazy()`
 code splitting, or `manualChunks` to separate the charting library.
 
-### 4.7 SSH parser assumes the current year
+### 4.7 ~~SSH parser assumes the current year~~ — fixed in Phase 13
 
-`parsers/ssh.py` parses syslog-style timestamps (`Jan 10 10:00:01`) that carry no
-year, and fills in the current one. Two consequences: logs that span a New Year
-boundary get mis-dated, and Python 3.15 will change `strptime`'s behaviour here
-(it already emits a `DeprecationWarning`, visible in every test run). The fix is
-to pass an explicit year rather than relying on the default.
+`parsers/timeutil.py::parse_yearless` now picks the most recent year in which
+the date exists and isn't more than a day in the future: a `Dec 31` line read
+on Jan 1 lands in last year, `Feb 29` lands in the latest leap year, and an
+impossible date (`Feb 30`) skips that line instead of failing the upload with a
+500. The Python 3.15 `strptime` deprecation is gone too.
+
+What remains: a year-less log **more than a year old** still gets a recent
+year, because the line itself carries no way to tell. A per-upload year hint
+closes that (planned with the upload UI).
 
 ### 4.8 Unicode bidi overrides can spoof text in the UI
 

@@ -1,4 +1,6 @@
 import json
+import logging
+from collections import Counter
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
@@ -10,6 +12,9 @@ from auth.rbac import require_role
 from database import get_pool
 from models.events import EventIn, IngestResult, UploadResult
 from parsers import app_json, nginx, ssh, syslog
+from parsers.timeutil import InvalidTimestamp
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,20 +94,34 @@ async def upload_log(
     lines = [line for line in content.splitlines() if line.strip()]
 
     events = []
-    skipped = 0
+    skipped_reasons: Counter[str] = Counter()
     for line in lines:
-        parsed = parser.parse_line(line)
-        if parsed is None:
-            skipped += 1
+        try:
+            parsed = parser.parse_line(line)
+        except InvalidTimestamp:
+            # e.g. `Feb 30`: the line has the right shape but no real date.
+            skipped_reasons["invalid_timestamp"] += 1
             continue
+        except Exception as exc:
+            # One hostile line that trips a parser bug must not fail the whole
+            # upload. Only the exception type is logged — never the line itself,
+            # which is attacker-controlled.
+            logger.warning("%s parser raised %s on an uploaded line", source_type, type(exc).__name__)
+            skipped_reasons["parser_error"] += 1
+            continue
+
+        if parsed is None:
+            skipped_reasons["unrecognized_format"] += 1
+            continue
+
         # Run parsed lines through the same EventIn validation as /api/ingest.
         # Parsers only check shape, so a line like `not-an-ip - - [...]` or an
-        # app-JSON `"source_ip": "garbage"` used to reach the INET column and
-        # fail the whole upload with a 500. One bad line is now just skipped.
+        # app-JSON `"source_ip": "garbage"` would otherwise reach the INET
+        # column and fail the whole upload with a 500.
         try:
             events.append(EventIn(**parsed).model_dump())
         except ValidationError:
-            skipped += 1
+            skipped_reasons["invalid_field"] += 1
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -113,6 +132,7 @@ async def upload_log(
         source_type=source_type,
         total_lines=len(lines),
         parsed=len(events),
-        skipped=skipped,
+        skipped=sum(skipped_reasons.values()),
+        skipped_reasons=dict(skipped_reasons),
         inserted=inserted,
     )

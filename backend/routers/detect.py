@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from auth.deps import CurrentUser
 from auth.rbac import require_role
@@ -15,6 +15,12 @@ router = APIRouter()
 async def run_detection(current_user: CurrentUser = Depends(require_role("analyst", "admin"))):
     pool = get_pool()
     async with pool.acquire() as conn:
-        results = await engine.run_all(conn)
+        try:
+            results = await engine.run_all(conn)
+        except engine.DetectionAlreadyRunning:
+            raise HTTPException(
+                status_code=409,
+                detail="A detection run is already in progress. Try again in a few seconds.",
+            )
 
     return DetectRunResult(results=results, ran_at=datetime.now(timezone.utc))

@@ -234,6 +234,28 @@ async def test_uploaded_app_json_with_invalid_ip_or_wrong_type_is_skipped(client
     assert (body["parsed"], body["skipped"], body["inserted"]) == (1, 2, 1)
 
 
+async def test_uploaded_line_with_an_impossible_date_is_skipped_not_500(client, auth):
+    """Regression: yearless timestamps were parsed into Python's default year
+    1900, so `Feb 29` (1900 isn't a leap year) and `Feb 30` raised inside the
+    parser and failed the whole upload with a 500."""
+    raw = (
+        f"Feb 28 10:00:01 host sshd[1]: Failed password for {MARK}-ok from 203.0.113.201 port 5000 ssh2\n"
+        f"Feb 30 10:00:02 host sshd[1]: Failed password for {MARK}-bad from 203.0.113.201 port 5001 ssh2\n"
+        f"Feb 29 10:00:03 host sshd[1]: Failed password for {MARK}-leap from 203.0.113.201 port 5002 ssh2\n"
+    ).encode()
+    r = await client.post(
+        "/api/logs/upload",
+        files={"file": ("bad_date.log", raw, "text/plain")},
+        data={"source_type": "ssh"},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # Feb 29 is a real date in the most recent leap year, so only Feb 30 is skipped.
+    assert (body["total_lines"], body["parsed"], body["skipped"], body["inserted"]) == (3, 2, 1, 2)
+    assert body["skipped_reasons"] == {"invalid_timestamp": 1}
+
+
 # --- no input can change the SQL that runs ---------------------------------
 
 @pytest.mark.parametrize(

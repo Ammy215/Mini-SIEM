@@ -6,6 +6,7 @@ from auth.deps import CurrentUser, get_current_user
 from database import get_pool
 from enrichment import abuseipdb, ipinfo, otx
 from enrichment.cache import get_cached, set_cached
+from enrichment.errors import ProviderError, ProviderNotConfigured
 from models.enrichment import EnrichmentResult
 
 router = APIRouter()
@@ -43,12 +44,20 @@ async def enrich_ip(ip: str, current_user: CurrentUser = Depends(get_current_use
                 cached_flags[provider_name] = True
                 continue
 
-            data = await query_fn(ip)
+            # The page shows a per-provider {"error": ...} card, so a provider
+            # failure degrades that one card instead of the whole lookup. The
+            # messages come from enrichment.errors and never include a URL or key.
+            try:
+                data = await query_fn(ip)
+            except ProviderNotConfigured:
+                data = {"error": "no API key configured"}
+            except ProviderError as exc:
+                data = {"error": str(exc)}
+            else:
+                await set_cached(conn, ip, "ip", provider_name, data)
+
             results[provider_name] = data
             cached_flags[provider_name] = False
-
-            if "error" not in data:
-                await set_cached(conn, ip, "ip", provider_name, data)
 
     return EnrichmentResult(
         ip=ip,

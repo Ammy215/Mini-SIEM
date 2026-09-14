@@ -162,6 +162,11 @@ export default function AttackLab() {
           ) : (
             <p className="text-sm text-muted-foreground">Analyst or admin role required to trigger detection.</p>
           )}
+          {runDetection.isError && (
+            <p className="text-sm text-destructive">
+              {runDetection.error?.response?.data?.detail ?? "Detection run failed."}
+            </p>
+          )}
           {runDetection.data && (
             <div className="text-sm font-mono space-y-1 pt-2">
               {Object.entries(runDetection.data.results).map(([key, value]) => (

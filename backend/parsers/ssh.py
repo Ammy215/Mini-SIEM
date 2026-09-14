@@ -1,5 +1,6 @@
 import re
-from datetime import datetime, timezone
+
+from parsers.timeutil import parse_yearless
 
 # Jan 10 10:00:01 host sshd[1234]: Failed password for invalid user admin from 203.0.113.5 port 51234 ssh2
 # Jan 10 10:00:10 host sshd[1234]: Accepted publickey for deploy from 198.51.100.7 port 51237 ssh2: RSA ...
@@ -10,13 +11,9 @@ _LINE_RE = re.compile(
 )
 
 
-def _parse_timestamp(ts: str) -> datetime:
-    # Syslog-style timestamps omit the year — assume the current year.
-    parsed = datetime.strptime(ts, "%b %d %H:%M:%S")
-    return parsed.replace(year=datetime.now(timezone.utc).year, tzinfo=timezone.utc)
-
-
 def parse_line(line: str) -> dict | None:
+    """Returns None for lines that aren't sshd auth results. Raises
+    InvalidTimestamp for a matching line whose date doesn't exist (Feb 30)."""
     match = _LINE_RE.search(line)
     if match is None:
         return None
@@ -24,7 +21,7 @@ def parse_line(line: str) -> dict | None:
     action = "login_success" if match["result"] == "Accepted" else "login_failed"
 
     return {
-        "event_time": _parse_timestamp(match["ts"]),
+        "event_time": parse_yearless(match["ts"]),
         "source_type": "ssh",
         "source_ip": match["ip"],
         "dest_port": 22,

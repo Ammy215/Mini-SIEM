@@ -1,13 +1,16 @@
 import httpx
 
 from config import settings
+from enrichment.errors import ProviderError, ProviderNotConfigured, provider_http_error
 
 PROVIDER = "otx"
 
 
 async def query(ip: str) -> dict:
+    """Raises ProviderNotConfigured without an API key, ProviderError when the
+    lookup fails. Callers must pass an already-validated public IP."""
     if not settings.otx_api_key:
-        return {"error": "no API key configured"}
+        raise ProviderNotConfigured(f"{PROVIDER}: no API key configured")
 
     url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
 
@@ -17,10 +20,15 @@ async def query(ip: str) -> dict:
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPError as exc:
-        return {"error": str(exc)}
+        raise provider_http_error(PROVIDER, exc) from None
+    except ValueError:
+        raise ProviderError(f"{PROVIDER} returned a response that isn't JSON") from None
 
-    pulse_info = data.get("pulse_info", {})
-    pulses = pulse_info.get("pulses", [])
+    if not isinstance(data, dict):
+        raise ProviderError(f"{PROVIDER} returned an unexpected response shape")
+
+    pulse_info = data.get("pulse_info") or {}
+    pulses = pulse_info.get("pulses") or []
 
     return {
         "pulse_count": pulse_info.get("count", 0),

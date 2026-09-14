@@ -19,15 +19,26 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def scratch_conn(pool):
+    """A connection inside one transaction whose search_path points at a brand
+    new schema; the schema and everything in it are rolled back afterwards.
+
+    The single transaction matters: the app reaches Neon through PgBouncer in
+    transaction mode, where a plain session-level SET can land on a different
+    server connection than the statements after it — and those statements
+    would then run against the real tables. A transaction stays on one server
+    connection, and SET LOCAL lives exactly as long as it. The runner's own
+    transactions nest inside as savepoints."""
     schema = f"test_migrations_{uuid.uuid4().hex[:12]}"
     async with pool.acquire() as c:
-        await c.execute(f'CREATE SCHEMA "{schema}"')
-        await c.execute(f'SET search_path TO "{schema}"')
+        tr = c.transaction()
+        await tr.start()
         try:
+            await c.execute(f'CREATE SCHEMA "{schema}"')
+            await c.execute(f'SET LOCAL search_path TO "{schema}"')
+            assert await c.fetchval("SELECT current_schema()") == schema
             yield c
         finally:
-            await c.execute("RESET search_path")
-            await c.execute(f'DROP SCHEMA "{schema}" CASCADE')
+            await tr.rollback()
 
 
 def _write(directory, name, content):

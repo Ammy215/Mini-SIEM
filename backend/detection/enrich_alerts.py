@@ -1,10 +1,12 @@
 import ipaddress
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from detection.scorer import THREAT_WEIGHTS, severity_for_score
 from enrichment import abuseipdb, otx
 from enrichment.cache import get_cached, set_cached
+from enrichment.errors import ProviderError, ProviderNotConfigured
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,19 @@ ABUSEIPDB_BAD_THRESHOLD = 80
 # a completely different IP. So a pulse only counts as a signal when there are
 # several of them, or when AbuseIPDB independently reports some abuse.
 OTX_PULSE_THRESHOLD = 3
+
+# A provider outage or rate limit used to cost an alert its enrichment forever:
+# the failure was indistinguishable from "clean IP" and the alert was marked
+# checked. Failed lookups now retry with backoff (2, 4, 8, 16 minutes) and only
+# give up after this many attempts.
+MAX_LOOKUP_ATTEMPTS = 5
+
+# Alerts that need provider lookups handled per scheduler tick, newest first;
+# the rest wait for the next tick. Keeps a burst of new alerts from spending a
+# free-tier daily quota in one go.
+LOOKUPS_PER_TICK = 25
+
+_PROVIDERS = ((abuseipdb.PROVIDER, abuseipdb.query), (otx.PROVIDER, otx.query))
 
 
 def _is_public(ip: str) -> bool:
@@ -29,13 +44,17 @@ def _is_public(ip: str) -> bool:
     )
 
 
-async def _get_or_fetch(conn, ip: str, provider_name: str, query_fn) -> dict:
+async def _get_or_fetch(conn, ip: str, provider_name: str, query_fn) -> dict | None:
+    """Cached or fresh provider data, or None when the provider has no API key.
+    Raises ProviderError when the provider is configured but the lookup failed."""
     cached = await get_cached(conn, ip, provider_name)
     if cached is not None:
         return cached
-    data = await query_fn(ip)
-    if "error" not in data:
-        await set_cached(conn, ip, "ip", provider_name, data)
+    try:
+        data = await query_fn(ip)
+    except ProviderNotConfigured:
+        return None
+    await set_cached(conn, ip, "ip", provider_name, data)
     return data
 
 
@@ -78,16 +97,40 @@ def evaluate_signals(abuse_data: dict, otx_data: dict) -> tuple[list[str], list[
     return signals, suppressed, observed
 
 
-async def _mark_checked(conn, alert_id: int, evidence: dict, signals: list[str] | None = None, reason: str | None = None) -> None:
-    evidence["enrichment_checked"] = True
-    if signals is not None:
-        evidence["enrichment_signals"] = signals
-    if reason is not None:
-        evidence["enrichment_skipped_reason"] = reason
+async def _save_evidence(conn, alert_id: int, evidence: dict) -> None:
     await conn.execute(
         "UPDATE alerts SET evidence = $2::jsonb WHERE id = $1",
         alert_id, json.dumps(evidence),
     )
+
+
+async def _mark_checked(conn, alert_id: int, evidence: dict, signals: list[str] | None = None, reason: str | None = None) -> None:
+    evidence["enrichment_checked"] = True
+    evidence.pop("enrichment_next_attempt_at", None)
+    if signals is not None:
+        evidence["enrichment_signals"] = signals
+    if reason is not None:
+        evidence["enrichment_skipped_reason"] = reason
+    await _save_evidence(conn, alert_id, evidence)
+
+
+async def _record_failed_attempt(conn, alert_id: int, evidence: dict, error: str) -> bool:
+    """Schedules a retry. Returns True when that was the last allowed attempt
+    and the alert has been marked checked instead."""
+    attempts = int(evidence.get("enrichment_attempts") or 0) + 1
+    evidence["enrichment_attempts"] = attempts
+    evidence["enrichment_last_error"] = error
+    logger.warning("enrichment lookup failed for alert_id=%s (attempt %s/%s): %s",
+                   alert_id, attempts, MAX_LOOKUP_ATTEMPTS, error)
+
+    if attempts >= MAX_LOOKUP_ATTEMPTS:
+        await _mark_checked(conn, alert_id, evidence, signals=[], reason="provider_unavailable")
+        return True
+
+    retry_at = datetime.now(timezone.utc) + timedelta(minutes=2 ** attempts)
+    evidence["enrichment_next_attempt_at"] = retry_at.isoformat()
+    await _save_evidence(conn, alert_id, evidence)
+    return False
 
 
 async def run_all(conn) -> dict[str, int]:
@@ -97,11 +140,16 @@ async def run_all(conn) -> dict[str, int]:
         FROM alerts
         WHERE source_ip IS NOT NULL
           AND (evidence->>'enrichment_checked') IS NULL
+          AND (evidence->>'enrichment_next_attempt_at' IS NULL
+               OR (evidence->>'enrichment_next_attempt_at')::timestamptz <= now())
+        ORDER BY created_at DESC
         """
     )
 
     checked = 0
     escalated = 0
+    retry_scheduled = 0
+    lookups = 0
 
     for row in rows:
         ip = str(row["source_ip"])
@@ -112,14 +160,33 @@ async def run_all(conn) -> dict[str, int]:
             checked += 1
             continue
 
+        if lookups >= LOOKUPS_PER_TICK:
+            continue  # left unchecked; a later tick picks it up
+        lookups += 1
+
         try:
-            abuse_data = await _get_or_fetch(conn, ip, abuseipdb.PROVIDER, abuseipdb.query)
-            otx_data = await _get_or_fetch(conn, ip, otx.PROVIDER, otx.query)
+            provider_data = {name: await _get_or_fetch(conn, ip, name, fn) for name, fn in _PROVIDERS}
+        except ProviderError as exc:
+            if await _record_failed_attempt(conn, row["id"], evidence, str(exc)):
+                checked += 1
+            else:
+                retry_scheduled += 1
+            continue
         except Exception:
             logger.exception("enrichment lookup failed for alert_id=%s ip=%s", row["id"], ip)
             continue
 
-        signals, suppressed, observed = evaluate_signals(abuse_data, otx_data)
+        unconfigured = [name for name, data in provider_data.items() if data is None]
+        if len(unconfigured) == len(provider_data):
+            await _mark_checked(conn, row["id"], evidence, signals=[], reason="no threat-intel providers configured")
+            checked += 1
+            continue
+        if unconfigured:
+            evidence["enrichment_unconfigured"] = unconfigured
+
+        signals, suppressed, observed = evaluate_signals(
+            provider_data[abuseipdb.PROVIDER] or {}, provider_data[otx.PROVIDER] or {},
+        )
 
         # Recorded either way so an analyst can see what the providers said and
         # why a signal did or didn't count.
@@ -133,6 +200,7 @@ async def run_all(conn) -> dict[str, int]:
             new_severity = severity_for_score(new_score)
             evidence["enrichment_checked"] = True
             evidence["enrichment_signals"] = signals
+            evidence.pop("enrichment_next_attempt_at", None)
             await conn.execute(
                 "UPDATE alerts SET threat_score = $2, severity = $3, evidence = $4::jsonb WHERE id = $1",
                 row["id"], new_score, new_severity, json.dumps(evidence),
@@ -143,4 +211,8 @@ async def run_all(conn) -> dict[str, int]:
 
         checked += 1
 
-    return {"enrichment_checked": checked, "enrichment_escalated": escalated}
+    return {
+        "enrichment_checked": checked,
+        "enrichment_escalated": escalated,
+        "enrichment_retry_scheduled": retry_scheduled,
+    }

@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 async def _tick(pool) -> None:
     async with pool.acquire() as conn:
-        await engine.run_all(conn)
+        try:
+            await engine.run_all(conn)
+        except engine.DetectionAlreadyRunning:
+            # A manual POST /api/detect/run is mid-flight; it covers this tick.
+            logger.info("detection tick skipped: a run is already in progress")
 
 
 async def run_scheduler_loop(pool, interval_seconds: int) -> None:

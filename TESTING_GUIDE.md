@@ -154,6 +154,8 @@ carefully — this is the pre-deploy regression pass.
 | B6 🛡️ | NUL byte in a field | `username: "root "` | 422, not 500 |
 | B7 🛡️ | Oversized single upload | a very large file | confirm it doesn't hang/crash the process (no hard limit currently enforced — note if this needs a cap before real-world use) |
 | B8 🔧 | Empty file upload | 0-byte file | graceful `parsed: 0` response, no crash |
+| B9 🛡️ | Impossible date in an ssh/syslog/nginx upload | a line dated `Feb 30` among valid lines | 200; that line skipped with `skipped_reasons: {"invalid_timestamp": 1}` — not a 500 (fixed in Phase 13) |
+| B10 🔧 | Year-less dates get the right year | ssh line dated `Feb 29`, or `Dec 31` uploaded in early January | `Feb 29` lands in the latest leap year; `Dec 31` lands in last year, never in the future |
 
 ### C. Detection — threshold rules (run `POST /api/detect/run` or wait for the 60s scheduler)
 
@@ -189,6 +191,8 @@ carefully — this is the pre-deploy regression pass.
 | E2 🔧 | Cache hit | enrich the same IP twice | 2nd call hits `ioc_cache`, no duplicate outbound API call (check response time / provider dashboard usage) |
 | E3 🛡️ | Private/reserved IP | enrich `10.0.0.5` or `127.0.0.1` | rejected before any outbound call |
 | E4 🔧 | Legitimate infra false-positive guard | an IP with <3 OTX pulses and 0 abuse score | not flagged as malicious (the whitelist/threshold fix) |
+| E5 🛡️ | Provider outage doesn't cost an alert its enrichment | a provider fails (e.g. wrong key → 401) while a public-IP alert is created | evidence shows `enrichment_attempts` + a retry time, not `enrichment_checked`; retries with backoff (2/4/8/16 min) and after 5 failures shows `enrichment_skipped_reason: provider_unavailable` |
+| E6 🛡️ | Provider errors never expose API keys | IP Intel lookup while a provider fails | the error card reads like `ipinfo returned HTTP 429` — no URL, no token (ipinfo's token used to sit in the URL, and the error message carried it) |
 
 ### F. Incidents / correlation
 
@@ -206,6 +210,7 @@ carefully — this is the pre-deploy regression pass.
 | G2 🔧 | Resolve / false-positive | same, other status values | status updates correctly |
 | G3 🛡️ | Viewer tries to change status | viewer, same call | 403 |
 | G4 🛡️ | Invalid status value | `{"status":"banana"}` | 422, not 500 |
+| G5 🔧 | Overlapping detection runs | fire two `POST /api/detect/run` at the same moment (or click "Run detection pass" while the 60s scheduler runs) | one runs, the other gets 409 "already in progress"; no duplicate alerts; the next run succeeds |
 
 ### H. AI Summary (opt-in, Groq)
 

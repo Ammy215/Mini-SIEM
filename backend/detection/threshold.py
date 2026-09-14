@@ -251,7 +251,12 @@ async def run_all(conn) -> dict[str, int]:
             "def": json.loads(row["definition"]),
         }
         try:
-            results[rule_key] = await evaluator(conn, rule)
+            # Each rule runs in its own transaction (a savepoint when the caller
+            # already holds one). A rule whose SQL fails rolls back only its own
+            # partial inserts, and doesn't leave the connection aborted for
+            # every rule after it.
+            async with conn.transaction():
+                results[rule_key] = await evaluator(conn, rule)
         except Exception:
             logger.exception("threshold evaluator failed for rule_key=%s", rule_key)
             results[rule_key] = 0

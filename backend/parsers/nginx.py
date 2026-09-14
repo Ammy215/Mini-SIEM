@@ -2,6 +2,8 @@ import re
 from datetime import datetime
 from urllib.parse import unquote, unquote_plus
 
+from parsers.timeutil import InvalidTimestamp
+
 # 203.0.113.5 - - [10/Jan/2026:10:00:01 +0000] "GET /login HTTP/1.1" 200 512 "-" "Mozilla/5.0"
 _LINE_RE = re.compile(
     r'^(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] '
@@ -29,11 +31,17 @@ def decode_url(url: str) -> str:
 
 
 def parse_line(line: str) -> dict | None:
+    """Returns None for lines that aren't combined log format. Raises
+    InvalidTimestamp for a matching line with an impossible time stamp."""
     match = _LINE_RE.search(line)
     if match is None:
         return None
 
-    event_time = datetime.strptime(match["ts"], "%d/%b/%Y:%H:%M:%S %z")
+    try:
+        event_time = datetime.strptime(match["ts"], "%d/%b/%Y:%H:%M:%S %z")
+    except ValueError as exc:
+        raise InvalidTimestamp(f"not a real timestamp: {match['ts']!r}") from exc
+
     raw_url = match["url"]
     decoded_url = decode_url(raw_url)
 
