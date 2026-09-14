@@ -1,7 +1,7 @@
 import uuid
 from contextlib import asynccontextmanager
 
-from detection import correlate, enrich_alerts, signature, threshold
+from detection import correlate, enrich_alerts, seeding, signature, threshold
 
 # How long a claimed run stays exclusive. A normal run takes seconds; the worst
 # case (every capped provider lookup timing out) is a few minutes. If the
@@ -44,8 +44,7 @@ async def detection_lease(conn):
 
 
 async def seed_all(conn) -> None:
-    await threshold.seed_rules(conn)
-    await signature.seed_rules(conn)
+    await seeding.seed_builtin_rules(conn)
 
 
 async def run_all(conn) -> dict[str, int]:

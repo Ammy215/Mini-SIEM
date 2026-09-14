@@ -275,28 +275,19 @@ async def test_sql_injection_in_filters_is_treated_as_a_literal_value(client, au
     assert r.json()["total"] == 0
 
 
-async def test_poisoned_rule_field_is_rejected_by_the_whitelist(client, auth, pool):
-    """detection/signature.py interpolates the field name into SQL, so it is
-    whitelisted. A rule editor must not be able to break out through it."""
+async def test_poisoned_rule_field_is_rejected_before_it_is_saved(client, auth):
+    """detection/signature.py interpolates the field name into SQL. The Rules
+    API now refuses such a definition outright; the evaluator keeps its own
+    whitelist as a second layer (tests/unit/test_rule_seeding.py)."""
     rules = (await client.get("/api/rules", headers=auth)).json()["rules"]
     sig = next(r for r in rules if r["rule_type"] == "signature")
-    original = sig["definition"]
 
-    poisoned = dict(original)
-    poisoned["field"] = "url FROM events; DROP TABLE alerts; --"
-    try:
-        r = await client.put(f"/api/rules/{sig['id']}", json={"definition": poisoned}, headers=auth)
-        assert r.status_code == 200
+    poisoned = {**sig["definition"], "field": "url FROM events; DROP TABLE alerts; --"}
+    r = await client.put(f"/api/rules/{sig['id']}", json={"definition": poisoned}, headers=auth)
+    assert r.status_code == 422
+    assert "DROP TABLE" not in r.text
 
-        # Detection must run without error and without executing the payload.
-        r = await client.post("/api/detect/run", headers=auth)
-        assert r.status_code == 200
-        assert r.json()["results"][sig["rule_key"]] == 0
-
-        async with pool.acquire() as conn:
-            assert await conn.fetchval("SELECT COUNT(*) FROM alerts") >= 0
-    finally:
-        await client.put(f"/api/rules/{sig['id']}", json={"definition": original}, headers=auth)
-
-    restored = (await client.get("/api/rules", headers=auth)).json()["rules"]
-    assert next(r for r in restored if r["id"] == sig["id"])["definition"] == original
+    after = (await client.get("/api/rules", headers=auth)).json()["rules"]
+    unchanged = next(r for r in after if r["id"] == sig["id"])
+    assert unchanged["definition"] == sig["definition"]
+    assert unchanged["user_modified"] == sig["user_modified"]

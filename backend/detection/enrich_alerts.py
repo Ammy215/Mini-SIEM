@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from detection.scorer import THREAT_WEIGHTS, severity_for_score
+from detection.scorer import THREAT_WEIGHTS, max_severity, severity_for_score
 from enrichment import abuseipdb, otx
 from enrichment.cache import get_cached, set_cached
 from enrichment.errors import ProviderError, ProviderNotConfigured
@@ -197,7 +197,9 @@ async def run_all(conn) -> dict[str, int]:
         if signals:
             bonus = sum(THREAT_WEIGHTS.get(s, 0) for s in signals)
             new_score = min(100, row["threat_score"] + bonus)
-            new_severity = severity_for_score(new_score)
+            # Escalation only: the alert already carries its rule's minimum
+            # severity, which a higher score must never drop below.
+            new_severity = max_severity(row["severity"], severity_for_score(new_score))
             evidence["enrichment_checked"] = True
             evidence["enrichment_signals"] = signals
             evidence.pop("enrichment_next_attempt_at", None)

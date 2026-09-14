@@ -15,6 +15,8 @@ THREAT_WEIGHTS = {
 
 SEVERITY_BANDS = {(0, 25): "low", (25, 50): "medium", (50, 75): "high", (75, 101): "critical"}
 
+SEVERITY_ORDER = ["low", "medium", "high", "critical"]
+
 
 def severity_for_score(score: int) -> str:
     score = max(0, min(100, score))
@@ -22,14 +24,6 @@ def severity_for_score(score: int) -> str:
         if lo <= score < hi:
             return label
     return "critical"
-
-
-def score_alert(signals: list[str]) -> tuple[int, str]:
-    score = min(100, sum(THREAT_WEIGHTS.get(signal, 0) for signal in signals))
-    return score, severity_for_score(score)
-
-
-SEVERITY_ORDER = ["low", "medium", "high", "critical"]
 
 
 def severity_rank(severity: str) -> int:
@@ -41,3 +35,21 @@ def severity_rank(severity: str) -> int:
 
 def max_severity(a: str, b: str) -> str:
     return a if severity_rank(a) >= severity_rank(b) else b
+
+
+def final_severity(score: int, minimum: str | None) -> str:
+    """Severity from the score, never below the rule's own severity.
+
+    A rule's severity is what its author judged a match to mean — a brute
+    force rule marked high stays high even though its base score (30) alone
+    only reaches the medium band. Threat intel can still push it higher.
+    """
+    derived = severity_for_score(score)
+    if minimum not in SEVERITY_ORDER:
+        return derived
+    return max_severity(derived, minimum)
+
+
+def score_alert(signals: list[str], minimum: str | None = None) -> tuple[int, str]:
+    score = min(100, sum(THREAT_WEIGHTS.get(signal, 0) for signal in signals))
+    return score, final_severity(score, minimum)

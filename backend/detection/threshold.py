@@ -53,25 +53,9 @@ SEED_DEFS = [
     },
 ]
 
-_SEED_SQL = """
-    INSERT INTO rules (rule_key, title, description, rule_type, severity, mitre_technique, definition, enabled)
-    VALUES ($1, $2, $3, 'threshold', $4, $5, $6::jsonb, TRUE)
-    ON CONFLICT (rule_key) DO UPDATE SET
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        severity = EXCLUDED.severity,
-        mitre_technique = EXCLUDED.mitre_technique,
-        definition = EXCLUDED.definition
-"""
 
-
-async def seed_rules(conn) -> None:
-    for rule in SEED_DEFS:
-        await conn.execute(
-            _SEED_SQL,
-            rule["rule_key"], rule["title"], rule["description"],
-            rule["severity"], rule["mitre_technique"], json.dumps(rule["definition"]),
-        )
+def seed_rows() -> list[dict]:
+    return [{**rule, "rule_type": "threshold"} for rule in SEED_DEFS]
 
 
 async def _is_suppressed(conn, rule_id: int, window_minutes: int, source_ip: str | None, username: str | None) -> bool:
@@ -112,7 +96,7 @@ async def _evaluate_brute_force(conn, rule) -> int:
         source_ip = str(row["source_ip"])
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
-        score, severity = score_alert(["brute_force_confirmed"])
+        score, severity = score_alert(["brute_force_confirmed"], minimum=rule["severity"])
         await insert_alert(
             conn, rule_id=rule["id"], title=f"Brute force login attempts from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
@@ -146,7 +130,7 @@ async def _evaluate_credential_stuffing(conn, rule) -> int:
         source_ip = str(row["source_ip"])
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
-        score, severity = score_alert(["credential_stuffing"])
+        score, severity = score_alert(["credential_stuffing"], minimum=rule["severity"])
         await insert_alert(
             conn, rule_id=rule["id"], title=f"Credential stuffing from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
@@ -180,7 +164,7 @@ async def _evaluate_port_scan(conn, rule) -> int:
         source_ip = str(row["source_ip"])
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], source_ip, None):
             continue
-        score, severity = score_alert(["port_scan"])
+        score, severity = score_alert(["port_scan"], minimum=rule["severity"])
         await insert_alert(
             conn, rule_id=rule["id"], title=f"Port scan from {source_ip}",
             mitre_technique=rule["mitre_technique"], source_ip=source_ip, threat_score=score, severity=severity,
@@ -214,7 +198,7 @@ async def _evaluate_password_spray(conn, rule) -> int:
         username = row["username"]
         if await _is_suppressed(conn, rule["id"], d["window_minutes"], None, username):
             continue
-        score, severity = score_alert(["password_spray_confirmed"])
+        score, severity = score_alert(["password_spray_confirmed"], minimum=rule["severity"])
         await insert_alert(
             conn, rule_id=rule["id"], title=f"Password spray against user '{username}'",
             mitre_technique=rule["mitre_technique"], source_ip=None, threat_score=score, severity=severity,
@@ -248,6 +232,7 @@ async def run_all(conn) -> dict[str, int]:
         rule = {
             "id": row["id"],
             "mitre_technique": row["mitre_technique"],
+            "severity": row["severity"],
             "def": json.loads(row["definition"]),
         }
         try:

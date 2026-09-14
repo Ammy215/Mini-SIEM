@@ -36,7 +36,7 @@ without constantly logging out.
 | Events | ✅ | ✅ | ✅ (read-only) |
 | Alerts | ✅ full actions | ✅ full actions | ✅ view only, no ack/resolve buttons |
 | Incidents | ✅ | ✅ | ✅ view only |
-| Rules | ✅ edit/toggle | ✅ edit/toggle | ✅ view only, no toggle |
+| Rules | ✅ everything, incl. detection logic and "Reset to default" | ✅ title, minimum severity, on/off (logic shown read-only) | ✅ view only, no toggle |
 | IP Intel | ✅ | ✅ | ✅ |
 | Attack Lab | ✅ (dev only, flag-gated) | ✅ (dev only) | usually hidden — confirm it's hidden or at least inert for viewer |
 | Admin | ✅ users + audit log | ❌ not in nav, and `/admin` route itself should redirect/403 | ❌ same |
@@ -270,6 +270,18 @@ carefully — this is the pre-deploy regression pass.
 | M1 🔧 | Flag on locally | `ENABLE_ATTACK_LAB=true`, restart | routes respond, real attacks against them get caught by detection |
 | M2 🛡️ | Flag off | `ENABLE_ATTACK_LAB=false`, restart | `/api/attack-lab/*` → 404, and **absent from `/openapi.json`** entirely (not just blocked) |
 | M3 🛡️ | Production env var | on Render, `ENABLE_ATTACK_LAB` simply **unset** | same as M2 |
+
+### N. Detection rule editing (Phase 14)
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| N1 🔧 | Analyst tunes a rule | as analyst, Rules → edit → change title and minimum severity → Save; then restart the backend | saved with a "Modified" badge, and still there after the restart (edits used to be wiped on every restart) |
+| N2 🛡️ | Analyst tries to change detection logic | as analyst, open the edit dialog; or `PUT /api/rules/{id}` with a `definition` | the logic shows read-only in the UI; the API returns 403 |
+| N3 🔧 | Admin tunes detection logic | as admin, e.g. `port_scan` threshold 15 → 10 → Save; restart | saved and kept across the restart; detection uses the new value |
+| N4 🛡️ | Invalid or hostile definitions | `window_minutes: 0`, an unknown key, a signature `field` of `url; DROP TABLE alerts; --`, a changed `group_by` | 422 with a readable message that never echoes the submitted value; nothing saved |
+| N5 🔧 | Admin "Reset to default" | on a Modified built-in rule, click Reset → Confirm | shipped title, severity and logic restored; badge gone; on/off switch unchanged; audit log has `rule_reset` |
+| N6 🔧 | Rule severity is a minimum | 11 failed logins from one IP within 5 min (`brute_force` is high) | the alert is **high** even though its base score is 30 (the medium band); threat intel can raise it, never lower it |
+| N7 🔧 | Edits are audited with what changed | edit a rule, then Admin → Audit Log | `rule_updated` entry lists each changed field with its old and new value |
 
 ---
 

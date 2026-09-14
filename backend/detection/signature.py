@@ -14,17 +14,6 @@ LOOKBACK_MINUTES = 30
 
 _ALLOWED_FIELDS = {"url", "user_agent", "raw_message", "username", "method"}
 
-_SEED_SQL = """
-    INSERT INTO rules (rule_key, title, description, rule_type, severity, mitre_technique, definition, enabled)
-    VALUES ($1, $2, $3, 'signature', $4, $5, $6::jsonb, TRUE)
-    ON CONFLICT (rule_key) DO UPDATE SET
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        severity = EXCLUDED.severity,
-        mitre_technique = EXCLUDED.mitre_technique,
-        definition = EXCLUDED.definition
-"""
-
 
 def load_yaml_rules() -> list[dict]:
     rules = []
@@ -38,22 +27,30 @@ def load_yaml_rules() -> list[dict]:
     return rules
 
 
-async def seed_rules(conn) -> None:
+def seed_rows() -> list[dict]:
+    rows = []
     for rule in load_yaml_rules():
         definition = dict(rule["detection"])
         if rule.get("logsource"):
             definition["logsource"] = rule["logsource"]
-
-        await conn.execute(
-            _SEED_SQL,
-            rule["rule_key"], rule["title"], rule.get("description"),
-            rule["severity"], rule["mitre"], json.dumps(definition),
-        )
+        rows.append({
+            "rule_key": rule["rule_key"],
+            "title": rule["title"],
+            "description": rule.get("description"),
+            "rule_type": "signature",
+            "severity": rule["severity"],
+            "mitre_technique": rule["mitre"],
+            "definition": definition,
+        })
+    return rows
 
 
 async def _evaluate_signature_rule(conn, rule) -> int:
     d = rule["def"]
     field = d.get("field")
+    # The Rules API validates definitions before saving, but this name is
+    # interpolated into SQL, so the whitelist stays here as a second layer
+    # against a definition written to the table by any other route.
     if field not in _ALLOWED_FIELDS:
         logger.error("signature rule %s: disallowed field %r", rule["rule_key"], field)
         return 0
@@ -100,7 +97,7 @@ async def _evaluate_signature_rule(conn, rule) -> int:
             continue
 
         signal = d.get("signal")
-        score, severity = score_alert([signal] if signal else [])
+        score, severity = score_alert([signal] if signal else [], minimum=rule["severity"])
 
         await insert_alert(
             conn, rule_id=rule["id"], title=rule["title"],
@@ -127,6 +124,7 @@ async def run_all(conn) -> dict[str, int]:
             "id": row["id"],
             "title": row["title"],
             "mitre_technique": row["mitre_technique"],
+            "severity": row["severity"],
             "rule_key": row["rule_key"],
             "def": json.loads(row["definition"]),
         }

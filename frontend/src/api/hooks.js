@@ -80,6 +80,14 @@ export function useUpdateRule() {
   });
 }
 
+export function useResetRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ruleId) => (await api.post(`/api/rules/${ruleId}/reset`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rules"] }),
+  });
+}
+
 export function useEnrichIp() {
   return useMutation({
     mutationFn: async (ip) => (await api.get(`/api/enrich/ip/${ip}`)).data,
