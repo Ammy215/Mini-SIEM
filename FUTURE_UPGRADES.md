@@ -46,7 +46,54 @@ asserts org A cannot read org B's rows through **every** read endpoint.
 
 ---
 
-## 2. Session / token revocation
+## 2. Investigation ownership / visibility scoping
+
+**Current state — everything is globally visible.** Once a user is approved,
+their role controls what they can *do* (`viewer` read-only, `analyst` can act,
+`admin` manages users/rules), but not what they can *see*. Every event, alert,
+and incident is visible to every approved user regardless of role — there is no
+concept of a private workspace, a case assigned to one analyst, or anything
+hidden from a `viewer` mid-investigation.
+
+**A v2 could add ownership / visibility scoping:** an optional `assigned_to`
+(user id) and/or `is_private` flag on `alerts` and `incidents`, so an admin or
+analyst can work a sensitive case without every other approved user — including
+every `viewer` — watching it unfold in real time.
+
+### What that would actually require
+
+- `assigned_to UUID REFERENCES users(id)` and `is_private BOOLEAN` columns on
+  `alerts` and `incidents`.
+- Read endpoints (`GET /api/alerts`, `GET /api/alerts/{id}`, `GET /api/incidents`,
+  `GET /api/incidents/{id}`, and the dashboard/stats aggregates that roll them up)
+  updated to hide a private row from anyone who isn't its assignee or an admin.
+- An explicit assign/claim action (e.g. `PUT /api/alerts/{id}` gains an
+  `assigned_to` field) plus an audit entry for both assignment and any visibility
+  change — hiding data from other analysts is itself a sensitive action worth a
+  trail.
+- Frontend: an "assigned to me" filter and a visual indicator for private/claimed
+  items on the Alerts and Incidents pages.
+
+### Why it's deferred
+
+**This is distinct from [multi-tenancy](#1-multi-tenancy).** Multi-tenancy
+isolates entire separate organizations from each other — different companies
+that must never see one another's data at all. This is about visibility *within*
+one shared team: everyone is still on the same tenant, same rule set, same
+detection engine; only who currently sees a specific in-progress row differs.
+The two could coexist (each org could later add ownership scoping inside itself)
+but neither implies the other, and this one is far smaller — it touches the read
+paths of two tables, not the entire data layer.
+
+Deferred for v1 because nothing so far has needed it: with one shared analyst
+team, full visibility has been a feature (anyone can pick up any alert), not a
+gap. It becomes worth building the moment there's a real need to keep an
+in-progress investigation — e.g. one involving an insider — from being visible
+to the whole team before it's confirmed.
+
+---
+
+## 3. Session / token revocation
 
 **Current state — stateless JWTs, no revocation.** Resetting a user's password
 or suspending their account does **not** invalidate JWTs that have already been
@@ -88,12 +135,12 @@ works until it expires (≤30 min), but it cannot be renewed.
 
 ---
 
-## 3. Smaller known limitations
+## 4. Smaller known limitations
 
 Each of these is understood, accepted for v1, and small enough to fix on its own.
 Roughly ordered by how much they'd matter on a public deployment.
 
-### 3.1 Rate limiter is in-memory (single-process, resets on restart)
+### 4.1 Rate limiter is in-memory (single-process, resets on restart)
 
 `auth/rate_limit.py` and `middleware/global_rate_limit.py` keep their sliding
 windows in a process-local dict. Consequences:
@@ -108,7 +155,7 @@ windows in a process-local dict. Consequences:
 Deliberate for v1 (the stack is locked to "no Redis"). The fix, if the app ever
 scales out, is a shared store — Redis, or a Postgres table with a TTL sweep.
 
-### 3.2 User enumeration via registration
+### 4.2 User enumeration via registration
 
 `POST /api/auth/register` returns `409 Email already registered` for a duplicate
 address, which lets anyone test whether a given email has an account. Login
@@ -119,14 +166,14 @@ The fix is to return the same generic accepted-response either way, which costs
 legitimate users a clear "you already have an account" message. Worth doing
 alongside a real signup/approval UX rather than in isolation.
 
-### 3.3 No password-reset UI
+### 4.3 No password-reset UI
 
 Admin-driven reset works (`PUT /api/admin/users/{id}` with `password`) but is
 API-only — the Admin page has no control for it, so it currently requires curl
 or `/docs`. There is still no self-service "forgot password" flow at all, which
 would need an email provider and is a much bigger piece of work.
 
-### 3.4 No user-deletion endpoint
+### 4.4 No user-deletion endpoint
 
 There is no `DELETE /api/admin/users/{id}`. Admins can suspend
 (`is_active = FALSE`) but not remove. Actual deletion currently requires direct
@@ -135,7 +182,7 @@ which is arguably the real design question: deleting a user destroys their audit
 trail. A proper fix is probably soft-delete, or `ON DELETE SET NULL` on
 `audit_log.user_id` to preserve history.
 
-### 3.5 `react-router-dom` v6 has open moderate advisories
+### 4.5 `react-router-dom` v6 has open moderate advisories
 
 `npm audit` reports two moderate issues (open redirect via backslash in `<Link>`
 / `useNavigate`, and constructor injection via `deserializeErrors()` in SSR
@@ -144,14 +191,14 @@ upgrade. The SSR advisory doesn't apply — this is a pure client-side SPA with 
 server-side rendering. Deferred as a scheduled dependency upgrade rather than a
 rushed pre-deploy change.
 
-### 3.6 Frontend ships as one 898 KB bundle
+### 4.6 Frontend ships as one 898 KB bundle
 
 `npm run build` emits a single ~898 KB JS chunk (~269 KB gzipped) and Vite warns
 about it. Fine functionally, but it means the whole app — Recharts included —
 downloads before the login screen renders. The fix is route-level `React.lazy()`
 code splitting, or `manualChunks` to separate the charting library.
 
-### 3.7 SSH parser assumes the current year
+### 4.7 SSH parser assumes the current year
 
 `parsers/ssh.py` parses syslog-style timestamps (`Jan 10 10:00:01`) that carry no
 year, and fills in the current one. Two consequences: logs that span a New Year
@@ -159,7 +206,7 @@ boundary get mis-dated, and Python 3.15 will change `strptime`'s behaviour here
 (it already emits a `DeprecationWarning`, visible in every test run). The fix is
 to pass an explicit year rather than relying on the default.
 
-### 3.8 Unicode bidi overrides can spoof text in the UI
+### 4.8 Unicode bidi overrides can spoof text in the UI
 
 Log content is stored verbatim and rendered by React as escaped text, which is
 correct and safe — no XSS. But *escaped* is not the same as *unambiguous*: a
@@ -180,7 +227,7 @@ Fix would be display-layer: strip or visibly escape the Unicode bidi control
 range (U+202A–U+202E, U+2066–U+2069) when rendering log-derived values, ideally
 in one shared cell component rather than per page.
 
-### 3.9 AI summaries: prompt injection is mitigated, not eliminated
+### 4.9 AI summaries: prompt injection is mitigated, not eliminated
 
 The opt-in "Summarize with AI" button sends an alert's or incident's evidence to
 Groq. Some of that evidence — URLs, user agents, matched text — is written by the
