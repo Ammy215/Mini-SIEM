@@ -137,10 +137,7 @@ async def upload_log(
             status_code=413, detail=f"File is larger than the {human_size(settings.max_upload_bytes)} upload limit."
         )
 
-    # Best-effort text: undecodable bytes become U+FFFD and NUL bytes are
-    # dropped (PostgreSQL cannot store them), so a partly corrupt file degrades
-    # line by line instead of failing outright.
-    text = content.decode("utf-8", errors="replace").replace("\x00", "")
+    text = pipeline.decode_upload(content)
     try:
         report = pipeline.parse_text(text, requested_format, ParseContext(year_hint=year))
     except pipeline.TooManyLines:

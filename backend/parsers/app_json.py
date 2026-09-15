@@ -11,7 +11,7 @@ _KNOWN_FIELDS = {
 }
 
 
-def _reject_non_json_number(name: str):
+def reject_json_constant(name: str):
     # Python's json accepts NaN and Infinity; PostgreSQL's jsonb doesn't.
     raise ValueError(f"{name} is not valid JSON")
 
@@ -22,17 +22,21 @@ def parse_line(line: str) -> dict | None:
         return None
 
     try:
-        obj = json.loads(line, parse_constant=_reject_non_json_number)
+        obj = json.loads(line, parse_constant=reject_json_constant)
     except ValueError:  # includes JSONDecodeError
         return None
 
     if not isinstance(obj, dict):
         return None
+    return parse_object(obj, line)
 
+
+def parse_object(obj: dict, raw_line: str) -> dict:
+    """An event from one JSON object — a line of JSON lines, or one item of a JSON array."""
     event = {
         "event_time": extract_time(obj) or datetime.now(timezone.utc),
         "source_type": "app",
-        "raw_message": obj.get("message", line),
+        "raw_message": obj.get("message", raw_line),
         "raw": obj,
     }
     for field in _KNOWN_FIELDS:

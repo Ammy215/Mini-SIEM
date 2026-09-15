@@ -1,0 +1,50 @@
+[
+    {
+        "Id":  4625,
+        "TimeCreated":  "\/Date(1789380300000)\/",
+        "MachineName":  "WS01.corp.example",
+        "ProviderName":  "Microsoft-Windows-Security-Auditing",
+        "LogName":  "Security",
+        "RecordId":  90101,
+        "Properties":  [
+                           { "Value":  "S-1-0-0" },
+                           { "Value":  "-" },
+                           { "Value":  "-" },
+                           { "Value":  "0x0" },
+                           { "Value":  "S-1-0-0" },
+                           { "Value":  "administrator" },
+                           { "Value":  "CORP" },
+                           { "Value":  "0xc000006d" },
+                           { "Value":  "%%2313" },
+                           { "Value":  "0xc000006a" },
+                           { "Value":  3 },
+                           { "Value":  "NtLmSsp " },
+                           { "Value":  "NTLM" },
+                           { "Value":  "ATTACKBOX" },
+                           { "Value":  "-" },
+                           { "Value":  "-" },
+                           { "Value":  0 },
+                           { "Value":  0 },
+                           { "Value":  "-" },
+                           { "Value":  "203.0.113.66" },
+                           { "Value":  "49822" }
+                       ]
+    },
+    {
+        "Id":  4720,
+        "TimeCreated":  "\/Date(1789380360000)\/",
+        "MachineName":  "DC01.corp.example",
+        "ProviderName":  "Microsoft-Windows-Security-Auditing",
+        "LogName":  "Security",
+        "Properties":  [
+                           { "Value":  "backdoor" },
+                           { "Value":  "CORP" }
+                       ]
+    },
+    {
+        "Id":  4624,
+        "TimeCreated":  "2026-09-14T10:06:00.1234567+00:00",
+        "MachineName":  "WS01.corp.example",
+        "Xml":  "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-Security-Auditing'/><EventID>4624</EventID><TimeCreated SystemTime='2026-09-14T10:06:00.1234567Z'/><Channel>Security</Channel><Computer>WS01.corp.example</Computer></System><EventData><Data Name='TargetUserName'>jsmith</Data><Data Name='LogonType'>10</Data><Data Name='IpAddress'>192.0.2.50</Data><Data Name='IpPort'>50111</Data></EventData></Event>"
+    }
+]

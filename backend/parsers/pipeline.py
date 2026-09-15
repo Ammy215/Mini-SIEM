@@ -1,9 +1,11 @@
 """Turns uploaded log text into events.
 
-Auto mode samples the start of the file to report what it is, then offers
-every line to the parsers in LINE_FORMATS order — most specific first — and
-keeps the first reading that parses and validates. A line nothing recognises
-is stored by the generic catch-all, so auto mode never drops data.
+Whole-document formats are recognised first: Windows event XML, and JSON
+arrays (Windows Get-WinEvent exports or any other tool's). Everything else is
+read line by line. Auto mode samples the start of the file to report what it
+is, then offers every line to the parsers in LINE_FORMATS order — most specific
+first — and keeps the first reading that parses and validates. A line nothing
+recognises is stored by the generic catch-all, so auto mode never drops data.
 
 A forced format is strict: the uploader said what the file is, so lines that
 format can't parse are skipped, each with a reason.
@@ -12,6 +14,8 @@ Keys starting with "_" in an event's raw data (_time_inferred, _ips_found,
 _truncated) are notes added during ingestion, not part of the original log.
 """
 
+import codecs
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
@@ -19,7 +23,7 @@ from typing import Callable
 from pydantic import ValidationError
 
 from models.events import EventIn
-from parsers import app_json, csv_format, generic, kv, nginx, ssh, syslog, syslog5424
+from parsers import app_json, csv_format, generic, kv, nginx, ssh, syslog, syslog5424, winevt
 from parsers.base import ParseContext
 from parsers.timeutil import InvalidTimestamp
 
@@ -61,8 +65,15 @@ LINE_FORMATS: tuple[LineFormat, ...] = (
         lambda line, ctx: nginx.parse_line(line),
     ),
     LineFormat(
-        "app", "JSON lines",
-        "One JSON object per line; common field names such as src_ip, user and @timestamp are mapped",
+        "windows", "Windows Event Log",
+        "Event Viewer or wevtutil XML, or PowerShell Get-WinEvent | ConvertTo-Json. "
+        "Logons (4624/4625), Kerberos and NTLM failures, account and group changes, log clearing. "
+        "Include the event XML in PowerShell exports to keep every field of every event ID",
+        lambda line, ctx: winevt.parse_json_line(line),
+    ),
+    LineFormat(
+        "app", "JSON",
+        "JSON lines or a JSON array; common field names such as src_ip, user and @timestamp are mapped",
         lambda line, ctx: app_json.parse_line(line),
     ),
     LineFormat(
@@ -126,6 +137,24 @@ class ParseReport:
             self.skipped_samples.append({"line": line_no, "reason": reason, "excerpt": text[:EXCERPT_CHARS]})
 
 
+def decode_upload(content: bytes) -> str:
+    """Upload bytes as text.
+
+    Event Viewer's XML export and Windows PowerShell 5.1's Out-File write
+    UTF-16 with a byte-order mark, which read as UTF-8 comes out as every other
+    character NUL. Otherwise it is best-effort UTF-8: undecodable bytes become
+    U+FFFD so a partly corrupt file degrades line by line. NUL is dropped either
+    way — PostgreSQL can't store it.
+    """
+    if content.startswith(codecs.BOM_UTF8):
+        text = content[len(codecs.BOM_UTF8):].decode("utf-8", errors="replace")
+    elif content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        text = content.decode("utf-16", errors="replace")
+    else:
+        text = content.decode("utf-8", errors="replace")
+    return text.replace("\x00", "")
+
+
 def available_formats() -> list[dict]:
     return [
         {"name": "auto", "label": "Auto-detect",
@@ -161,6 +190,18 @@ def detect_format(lines: list[str], ctx: ParseContext) -> tuple[str, float]:
 
 
 def parse_text(text: str, requested: str, ctx: ParseContext) -> ParseReport:
+    text = text.lstrip("﻿")
+
+    if requested in ("auto", "windows") and winevt.looks_like_xml(text):
+        report = _parse_windows_xml(text, requested)
+        if report is not None:
+            return report
+
+    if requested in ("auto", "windows", "app"):
+        items = _json_document(text)
+        if items is not None:
+            return _parse_json_document(items, requested)
+
     numbered = [(no, line) for no, line in enumerate(text.splitlines(), start=1) if line.strip()]
     if len(numbered) > MAX_LINES:
         raise TooManyLines(f"more than {MAX_LINES} lines")
@@ -193,6 +234,74 @@ def parse_text(text: str, requested: str, ctx: ParseContext) -> ParseReport:
         else:
             report.add(fmt.name, event)
     return report
+
+
+def _parse_windows_xml(text: str, requested: str) -> ParseReport | None:
+    """None when the XML isn't Windows event XML, so line parsing takes over."""
+    report = ParseReport(requested, "windows", 1.0 if requested == "auto" else None)
+    try:
+        events, error = winevt.parse_xml_document(text)
+    except winevt.NotWindowsXml:
+        return None
+    except winevt.WindowsLogRejected as rejected:
+        report.total_lines = 1
+        report.skip(1, rejected.reason, text)
+        return report
+
+    report.total_lines = len(events) + (1 if error else 0)
+    for index, parsed in enumerate(events, start=1):
+        _add_document_item(report, "windows", index, parsed, "missing_event_id")
+    if error:
+        report.skip(len(events) + 1, error, "")
+    return report
+
+
+def _json_document(text: str) -> list[dict] | None:
+    """The objects of a whole-file JSON array (or single pretty-printed object);
+    None for JSON lines, which are read line by line instead."""
+    stripped = text.strip()
+    if not stripped.startswith(("[", "{")):
+        return None
+    try:
+        data = json.loads(stripped, parse_constant=app_json.reject_json_constant)
+    except (ValueError, RecursionError):
+        return None
+    items = data if isinstance(data, list) else [data]
+    if not items or not all(isinstance(item, dict) for item in items):
+        return None
+    return items
+
+
+def _parse_json_document(items: list[dict], requested: str) -> ParseReport:
+    is_windows = requested == "windows" or (
+        requested == "auto" and all(winevt.is_winevent_object(item) for item in items[:SAMPLE_SIZE])
+    )
+    name = "windows" if is_windows else "app"
+    report = ParseReport(requested, name, 1.0 if requested == "auto" else None)
+    report.total_lines = len(items)
+
+    for index, item in enumerate(items, start=1):
+        try:
+            if is_windows:
+                parsed = winevt.from_json_object(item)
+            else:
+                parsed = app_json.parse_object(item, json.dumps(item)[:MAX_LINE_CHARS])
+        except Exception:
+            report.skip(index, "parser_error", "")
+            continue
+        _add_document_item(report, name, index, parsed, "unrecognized_format")
+    return report
+
+
+def _add_document_item(report: ParseReport, name: str, index: int, parsed: dict | None, missing_reason: str) -> None:
+    if parsed is None:
+        report.skip(index, missing_reason, "")
+        return
+    event = _validate(parsed)
+    if event is None:
+        report.skip(index, "invalid_field", str(parsed.get("raw_message") or ""))
+    else:
+        report.add(name, event)
 
 
 def _parse_line_auto(report: ParseReport, line_no: int, line: str, ctx: ParseContext) -> None:

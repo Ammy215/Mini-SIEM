@@ -89,7 +89,8 @@ strict: lines that don't match are skipped, each with a reason.
 |---|---|---|
 | `ssh` | OpenSSH auth results (`Failed`/`Accepted` password or publickey) | username, source_ip, `login_failed` / `login_success` |
 | `nginx` | Nginx / Apache combined access log | URL decoded for signature rules; original kept in `raw.url_raw` |
-| `app` | JSON lines | Mini SIEM's own field names taken strictly; other tools' names (`src_ip`, `user`, `@timestamp`, epoch `ts`) mapped |
+| `windows` | Windows Event Log: Event Viewer / `wevtutil` XML, or PowerShell `Get-WinEvent \| ConvertTo-Json` | UTF-16 exports handled. Logons 4624/4625, Kerberos 4771 and NTLM 4776 failures (so AD brute force counts), 4672, 4720, group adds, 1102 log cleared; other IDs kept as `winevent`. Plain PowerShell JSON only lists values by position, so names are applied only to 4624/4625 — add the `Xml` property for full fields |
+| `app` | JSON lines, or a JSON array | Mini SIEM's own field names taken strictly; other tools' names (`src_ip`, `user`, `@timestamp`, epoch `ts`) mapped |
 | `syslog5424` | Syslog, RFC 5424 | sshd messages become ssh login events |
 | `syslog` | Syslog, RFC 3164 / BSD | host, process, pid |
 | `kv` | 3+ `key=value` pairs (firewalls, appliances) | `srcip`, `dstport`, `action`, and split `date=` + `time=` mapped |
@@ -177,6 +178,11 @@ carefully — this is the pre-deploy regression pass.
 | B17 🛡️ | Size limits | file over 10 MB; a streamed `/api/ingest` body over 5 MB; 1,001 events in one ingest call | all 413, before the body is processed; nothing stored |
 | B18 🛡️ | `NaN` / hostile values in rejected input | `POST /api/ingest` with `"raw": {"x": NaN}`, or an invalid `source_ip` holding a `<script>` payload | clean 422; the response never echoes the submitted value back |
 | B19 🔧 | Year hint | upload an old ssh/syslog file with `year=2019` | events dated 2019 instead of the most recent matching year |
+| B20 🔧 | Windows XML export | Event Viewer → Security → "Save All Events As…" XML (UTF-16), or `wevtutil qe Security /f:xml > sec.xml` | `detected_format: windows`; 4625 rows have username, source_ip, `login_failed`; host = the computer name |
+| B21 🔧 | Windows PowerShell JSON export | `Get-WinEvent -LogName Security -MaxEvents 500 \| ConvertTo-Json \| Out-File sec.json` | detected as windows; 4624/4625 fields named; other event IDs kept with their code and action but unnamed values — re-export with `@{n='Xml';e={$_.ToXml()}}` for full fields |
+| B22 🔧 | Windows brute force is detected | 11+ failed logons (4625) from one IP within 5 min, uploaded as XML with current timestamps | brute_force alert, T1110 — same rule as SSH, no Windows-specific rule needed |
+| B23 🔧 | Active Directory auth failures | domain-controller export with 4771 (Kerberos pre-auth failed) / 4776 with a non-zero Status | stored as `login_failed`, so brute force / password spray rules see them |
+| B24 🛡️ | Hostile XML | billion-laughs or XXE (`<!DOCTYPE … SYSTEM "file:///etc/passwd">`) uploaded as .xml | returns quickly; `skipped_reasons: {"xml_dtd_forbidden": 1}`; nothing stored, no file read |
 
 ### C. Detection — threshold rules (run `POST /api/detect/run` or wait for the 60s scheduler)
 

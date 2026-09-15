@@ -176,7 +176,7 @@ async def test_formats_endpoint_lists_every_upload_format(client, admin):
     r = await client.get("/api/ingest/formats", headers=admin)
     assert r.status_code == 200
     names = [fmt["name"] for fmt in r.json()["formats"]]
-    assert names == ["auto", "ssh", "nginx", "app", "syslog5424", "syslog", "kv", "csv", "generic"]
+    assert names == ["auto", "ssh", "nginx", "windows", "app", "syslog5424", "syslog", "kv", "csv", "generic"]
 
 
 async def test_unknown_format_and_impossible_year_are_rejected(client, admin, batches):
