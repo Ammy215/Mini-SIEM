@@ -182,14 +182,17 @@ which is arguably the real design question: deleting a user destroys their audit
 trail. A proper fix is probably soft-delete, or `ON DELETE SET NULL` on
 `audit_log.user_id` to preserve history.
 
-### 4.5 `react-router-dom` v6 has open moderate advisories
+### 4.5 ~~`react-router-dom` v6 has open moderate advisories~~ — fixed before deploy
 
-`npm audit` reports two moderate issues (open redirect via backslash in `<Link>`
+`npm audit` reported two moderate issues (open redirect via backslash in `<Link>`
 / `useNavigate`, and constructor injection via `deserializeErrors()` in SSR
-hydration). The only fix `npm` offers is `react-router-dom@7`, a breaking major
-upgrade. The SSR advisory doesn't apply — this is a pure client-side SPA with no
-server-side rendering. Deferred as a scheduled dependency upgrade rather than a
-rushed pre-deploy change.
+hydration), fixed only in React Router 7. Upgraded `react-router-dom` 6.30.6 →
+7.18.4 (pinned); `npm audit --omit=dev` now reports 0 vulnerabilities. The app
+uses only declarative routing (`BrowserRouter`, `Routes`, `NavLink`,
+`useSearchParams`…), all unchanged in v7, so no code needed adjusting. One
+behaviour to know when writing browser tests: v7 renders route changes as React
+transitions, so wait for the new page's heading rather than reading it straight
+after a click.
 
 ### 4.6 Frontend ships as one 898 KB bundle
 
