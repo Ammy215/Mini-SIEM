@@ -382,6 +382,25 @@ Configure in `backend/.env` (blank = not configured): `HOME_COUNTRIES=US,GB`,
 | R8 🔧 | Host sweep | firewall log: one IP to 10+ destination addresses in 5 min | medium "Host sweep from <ip>" with the addresses in evidence; 9 → nothing |
 | R9 🔧 | Host-level incidents | any R3–R6 alert (no attacker IP) | its own incident, titled like the alert — not "Password spray campaign" |
 
+### S. Analysing uploaded and past logs (Phase 23)
+
+Live detection only looks back a few minutes. These cases check that old
+logs are still analysed — over their own dates.
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| S1 🔧 | Old log, not analysed | Upload Logs → untick **Analyze this file for attacks** → upload an auth.log from months ago with 12+ failed logins from one IP | events stored; no alerts; history shows **Not analyzed** |
+| S2 🔧 | Analyse on upload | same file with the box ticked (the default) | status **Waiting for analysis** → within about a minute **Analyzed · N new alerts**; **View alerts from this file** lists them with a **From upload** badge, and **Happened** shows the log's own dates |
+| S3 🔧 | Analyse an earlier upload | expand an old upload in the history → **Analyze for attacks** | same as S2; audit log has `batch_analysis_requested` |
+| S4 🔧 | Re-analysing adds nothing | **Analyze again** on an analysed upload | done, "no new alerts" |
+| S5 🔧 | Sliding windows | a log with 6 failures at 10:04:00–10:04:50 and 5 at 10:05:10–10:05:50 from one IP | brute force found (fixed 5-minute buckets would see 6 and 5) |
+| S6 🔧 | Separate bursts | two bursts of 12 failures from one IP, hours apart | two alerts, each with its own time span |
+| S7 🔧 | Only the upload's events | an upload with 6 failures while other stored events add 6 more from that IP at the same times | analysing the upload finds nothing; an admin range run over those minutes finds the brute force |
+| S8 🛡️ | Permissions | viewer: `POST /api/ingest/batches/{id}/analyze`; analyst: `POST /api/detect/run` with `{"from","to"}` | 403 both; an analyst can analyse an upload |
+| S9 🛡️ | Range limits | admin `POST /api/detect/run` with a 31-day range, `to` before `from`, or times without a time zone | 422 each; a valid range → 200 and audit `detection_range_run` |
+| S10 🔧 | Restart mid-analysis | stop the backend while an upload shows **Analyzing…**; start it again | the upload is queued again and completes |
+| S11 🔧 | Alerts filter | `GET /api/alerts?origin=batch` or `?batch_id=…` | only alerts from upload analysis / that upload |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist

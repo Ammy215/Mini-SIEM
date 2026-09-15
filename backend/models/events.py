@@ -114,6 +114,8 @@ class UploadResult(BaseModel):
     by_parser: dict[str, int]
     skipped_reasons: dict[str, int] = Field(default_factory=dict)
     skipped_samples: list[SkippedSample] = Field(default_factory=list)
+    # "queued" when the upload asked for its events to be analysed for attacks.
+    detection_status: str = "none"
 
 
 class BatchOut(BaseModel):
@@ -135,6 +137,13 @@ class BatchOut(BaseModel):
     first_event_time: datetime | None
     last_event_time: datetime | None
     created_at: datetime
+    # Attack analysis of this upload: none | queued | running | done | failed.
+    detection_status: str = "none"
+    detection_requested_at: datetime | None = None
+    detection_started_at: datetime | None = None
+    detection_finished_at: datetime | None = None
+    detection_result: dict | None = None
+    detection_error: str | None = None
 
 
 class BatchListResponse(BaseModel):

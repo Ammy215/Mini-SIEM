@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LogText } from "@/components/LogText";
 import { useAuth } from "@/api/AuthContext";
-import { useIngestFormats, useUploadBatches, useUploadLog } from "@/api/hooks";
+import { useAnalyzeBatch, useIngestFormats, useUploadBatches, useUploadLog } from "@/api/hooks";
 import { apiErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
@@ -164,7 +164,88 @@ function SkipReasons({ reasons }) {
   );
 }
 
-function UploadResult({ result, formats }) {
+const ANALYSIS_LABELS = {
+  none: "Not analyzed",
+  queued: "Waiting for analysis",
+  running: "Analyzing…",
+  done: "Analyzed",
+  failed: "Analysis failed",
+};
+
+const ANALYSIS_TONES = {
+  done: "border-siem-green text-siem-green",
+  failed: "border-destructive text-destructive",
+  queued: "border-amber text-amber",
+  running: "border-cyan text-cyan",
+};
+
+function AnalysisBadge({ status }) {
+  return (
+    <Badge variant="outline" className={cn("h-5 whitespace-nowrap font-normal", ANALYSIS_TONES[status])}>
+      {ANALYSIS_LABELS[status] ?? status}
+    </Badge>
+  );
+}
+
+// Attack analysis of one upload: its status, what it found, and the controls to run it.
+function AnalysisPanel({ batch }) {
+  const analyze = useAnalyzeBatch();
+  const [error, setError] = useState(null);
+  if (!batch) return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  const status = batch.detection_status ?? "none";
+  const pending = status === "queued" || status === "running";
+  const outcome = batch.detection_result;
+  const ruleErrors = Object.keys(outcome?.rule_errors ?? {});
+
+  const start = async (e) => {
+    e.stopPropagation();
+    setError(null);
+    try {
+      await analyze.mutateAsync(batch.id);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Couldn't start the analysis"));
+    }
+  };
+
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <AnalysisBadge status={status} />
+        {status === "done" && outcome && (
+          <span className="text-muted-foreground">
+            {outcome.alerts_created === 0
+              ? "no new alerts"
+              : `${outcome.alerts_created} new ${outcome.alerts_created === 1 ? "alert" : "alerts"}`}
+          </span>
+        )}
+        {status === "failed" && batch.detection_error && <span className="text-xs text-destructive">{batch.detection_error}</span>}
+      </div>
+      {pending && <p className="text-xs text-muted-foreground">Runs with the next detection pass, usually within a minute.</p>}
+      {status === "none" && (
+        <p className="text-xs text-muted-foreground">
+          Live detection only watches the last few minutes; analysis checks this file across its own dates.
+        </p>
+      )}
+      {ruleErrors.length > 0 && <p className="text-xs text-amber">Some rules couldn't run: {ruleErrors.join(", ")}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        {batch.inserted > 0 && !pending && (
+          <Button variant="outline" size="sm" onClick={start} disabled={analyze.isPending}>
+            {status === "none" ? "Analyze for attacks" : "Analyze again"}
+          </Button>
+        )}
+        {status === "done" && (
+          <Link to={`/alerts?batch_id=${batch.id}`} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
+            View alerts from this file
+          </Link>
+        )}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function UploadResult({ result, formats, batch }) {
   const confidence =
     result.confidence == null
       ? "format chosen by you"
@@ -232,6 +313,13 @@ function UploadResult({ result, formats }) {
               <Link to={`/events?batch_id=${result.batch_id}`}>View these events</Link>
             </Button>
           )}
+
+          {result.inserted > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Attack analysis</p>
+              <AnalysisPanel batch={batch} />
+            </div>
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -260,17 +348,18 @@ function UploadHistory({ formats }) {
                 <TableHead>Format</TableHead>
                 <TableHead className="text-right">Stored</TableHead>
                 <TableHead className="text-right">Skipped</TableHead>
+                <TableHead>Analysis</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">Loading...</TableCell>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">Loading...</TableCell>
                 </TableRow>
               )}
               {!isLoading && batches.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">No uploads yet.</TableCell>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">No uploads yet.</TableCell>
                 </TableRow>
               )}
               {batches.map((batch) => {
@@ -296,11 +385,14 @@ function UploadHistory({ formats }) {
                       <TableCell className={cn("text-right font-mono", batch.skipped && "text-amber")}>
                         {batch.skipped.toLocaleString()}
                       </TableCell>
+                      <TableCell>
+                        <AnalysisBadge status={batch.detection_status ?? "none"} />
+                      </TableCell>
                     </TableRow>
                     {isOpen && (
                       <TableRow>
-                        <TableCell colSpan={7} className="bg-background/50 px-4 py-4">
-                          <div className="grid gap-4 md:grid-cols-3">
+                        <TableCell colSpan={8} className="bg-background/50 px-4 py-4">
+                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                             <div className="space-y-2">
                               <p className="text-xs uppercase tracking-wide text-muted-foreground">Read by</p>
                               <ParserCounts byParser={batch.by_parser} formats={formats} />
@@ -325,6 +417,10 @@ function UploadHistory({ formats }) {
                                 </Link>
                               )}
                             </div>
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Attack analysis</p>
+                              <AnalysisPanel batch={batch} />
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -347,6 +443,8 @@ export default function Upload() {
 
   const { data: formatsData } = useIngestFormats(canUpload);
   const uploadLog = useUploadLog();
+  const { data: batchesData } = useUploadBatches(canUpload);
+  const [analyze, setAnalyze] = useState(true);
   const [file, setFile] = useState(null);
   const [format, setFormat] = useState("auto");
   const [year, setYear] = useState("");
@@ -388,6 +486,7 @@ export default function Upload() {
         file,
         format,
         year: year ? Number(year) : undefined,
+        analyze,
         onProgress: setProgress,
       });
       setResult(data);
@@ -447,6 +546,23 @@ export default function Upload() {
               </div>
             </div>
 
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                id="upload-analyze"
+                type="checkbox"
+                className="mt-1"
+                checked={analyze}
+                onChange={(e) => setAnalyze(e.target.checked)}
+                disabled={uploadLog.isPending}
+              />
+              <span>
+                Analyze this file for attacks
+                <span className="block text-xs text-muted-foreground">
+                  Runs every enabled detection rule over the file's own dates, so old logs are checked too.
+                </span>
+              </span>
+            </label>
+
             {uploadLog.isPending && (
               <div className="space-y-1.5" aria-live="polite">
                 <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -487,7 +603,13 @@ export default function Upload() {
         </Card>
       </div>
 
-      {result && <UploadResult result={result} formats={formats} />}
+      {result && (
+        <UploadResult
+          result={result}
+          formats={formats}
+          batch={batchesData?.batches?.find((b) => b.id === result.batch_id)}
+        />
+      )}
 
       <UploadHistory formats={formats} />
     </div>

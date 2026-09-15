@@ -21,6 +21,7 @@ _FIRST_WRITE_WINS = ("event_id", "field", "value_snippet", "event_time")
 async def upsert_alert(
     conn, *, rule, group_key: str, source_ip: str | None, first_time, last_time,
     evidence: dict, signals: list[str], merge_minutes: int, title: str,
+    origin: str = "live", batch_id=None,
 ) -> tuple[int, bool]:
     """Returns (alert id, whether a new alert was created)."""
     existing = await conn.fetchrow(
@@ -59,12 +60,12 @@ async def upsert_alert(
     alert_id = await conn.fetchval(
         """
         INSERT INTO alerts (rule_id, title, severity, mitre_technique, source_ip, threat_score, status, evidence,
-                            group_key, first_event_time, last_event_time)
-        VALUES ($1, $2, $3, $4, $5::inet, $6, 'open', $7::jsonb, $8, $9, $10)
+                            group_key, first_event_time, last_event_time, origin, batch_id)
+        VALUES ($1, $2, $3, $4, $5::inet, $6, 'open', $7::jsonb, $8, $9, $10, $11, $12)
         RETURNING id
         """,
         rule["id"], title, severity, rule["mitre_technique"], source_ip, score, json.dumps(evidence),
-        group_key, first_time, last_time,
+        group_key, first_time, last_time, origin, batch_id,
     )
     return alert_id, True
 

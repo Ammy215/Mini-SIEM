@@ -12,7 +12,7 @@ def _first_call_fails():
     its first call, and runs a normal query on every call after that."""
     calls = []
 
-    async def evaluator(conn, rule):
+    async def evaluator(conn, rule, scope=None):
         calls.append(rule)
         if len(calls) == 1:
             await conn.execute("INSERT INTO alerts (title, severity, status) VALUES ('half-written', 'low', 'open')")
@@ -43,7 +43,7 @@ async def test_a_slow_rule_is_cancelled_by_the_statement_timeout(conn, monkeypat
     await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_type = 'signature'")
     monkeypatch.setattr(rule_engine, "STATEMENT_TIMEOUT", "200ms")
 
-    async def slow(conn, rule):
+    async def slow(conn, rule, scope=None):
         return await conn.fetchval("SELECT 1 FROM pg_sleep(2)")
 
     monkeypatch.setattr(rule_engine, "evaluate_rule", slow)

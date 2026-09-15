@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         # first request that happens to touch a column a migration adds.
         await assert_schema_current(conn)
         await engine.seed_all(conn)
+        await engine.requeue_interrupted_batches(conn)
 
     scheduler_task = asyncio.create_task(run_scheduler_loop(pool, settings.detection_interval_seconds))
 

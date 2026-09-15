@@ -221,21 +221,37 @@ export function useIngestFormats(enabled = true) {
   });
 }
 
+const ANALYSIS_PENDING = ["queued", "running"];
+
 export function useUploadBatches(enabled = true, limit = 20) {
   return useQuery({
     queryKey: ["ingest", "batches", limit],
     queryFn: async () => (await api.get("/api/ingest/batches", { params: { limit } })).data,
     enabled,
+    // Poll while an analysis is waiting or running, so its status updates on its own.
+    refetchInterval: (arg) => {
+      const data = arg?.state?.data ?? arg;
+      return data?.batches?.some((b) => ANALYSIS_PENDING.includes(b.detection_status)) ? 5000 : false;
+    },
+  });
+}
+
+export function useAnalyzeBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (batchId) => (await api.post(`/api/ingest/batches/${batchId}/analyze`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ingest", "batches"] }),
   });
 }
 
 export function useUploadLog() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file, format, year, onProgress }) => {
+    mutationFn: async ({ file, format, year, analyze, onProgress }) => {
       const form = new FormData();
       form.append("file", file);
       form.append("format", format);
+      form.append("analyze", analyze ? "true" : "false");
       if (year) form.append("year", String(year));
       const response = await api.post("/api/logs/upload", form, {
         onUploadProgress: (event) => {

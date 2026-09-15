@@ -115,6 +115,9 @@ async function main() {
   // exists as a hidden <option> in the format dropdown.
   const detectedLine = await page.locator('p:has-text("Detected as")').first().textContent();
   check("classic syslog is detected", detectedLine?.includes("Syslog (RFC 3164 / BSD)"));
+  // "Analyze this file for attacks" is on by default, so the upload is queued for analysis.
+  await page.waitForSelector("text=/Waiting for analysis|Analyzing…|Analyzed/", { timeout: 10000 });
+  check("upload shows its attack-analysis status", true);
   await page.click('a:has-text("View these events")');
   await page.waitForSelector("text=Showing events from one upload", { timeout: 10000 });
   check("'View these events' opens Events filtered to the upload", true);

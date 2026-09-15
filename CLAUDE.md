@@ -492,7 +492,10 @@ GET    /api/auth/me
 
 # ingest + parse
 POST   /api/ingest              ← agent/app posts events (single or batch)
-POST   /api/logs/upload         ← upload a raw log file, parse + normalize
+POST   /api/logs/upload         ← upload a raw log file, parse + normalize; analyze=true queues
+                                  attack analysis over the file's own dates
+GET    /api/ingest/batches      ← upload history, incl. analysis status/result
+POST   /api/ingest/batches/{id}/analyze ← queue (or re-run) analysis of an upload
 
 # events
 GET    /api/events              ← filter, paginate, full-text search
@@ -508,7 +511,8 @@ PUT    /api/rules/{id}
 DELETE /api/rules/{id}          ← admin: custom rules with no alerts only
 POST   /api/rules/{id}/reset    ← admin: built-in back to the shipped definition
 POST   /api/rules/{id}/toggle
-POST   /api/detect/run          ← manually trigger a detection pass
+POST   /api/detect/run          ← manually trigger a detection pass; admin body {"from","to"} runs
+                                  every rule over a past range (≤30 days)
 
 # alerts + incidents
 GET    /api/alerts
