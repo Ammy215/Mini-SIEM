@@ -1,0 +1,25 @@
+title: Port Scan Blocked by the Firewall
+rule_key: firewall-port-scan
+severity: medium
+mitre: T1046
+description: >-
+  A firewall blocked connections from one source IP to 10 or more different
+  destination ports within 5 minutes. Lower bar than the general port-scan
+  rule, because every one of these connections was refused.
+definition:
+  version: 2
+  logsource: [firewall]
+  filter: {field: action, op: eq, value: blocked}
+  aggregate:
+    group_by: source_ip
+    window_minutes: 5
+    function: distinct
+    distinct_field: dest_port
+    op: gte
+    threshold: 10
+  alert:
+    signal: port_scan
+    title: "Firewall blocked a port scan from {source_ip}"
+    count_key: distinct_ports
+    values_key: ports
+    values_field: dest_port

@@ -58,7 +58,8 @@ async def run_all(conn) -> dict[str, int]:
     # when the alert was created.
     rows = await conn.fetch(
         """
-        SELECT id, source_ip, severity, evidence->>'username' AS spray_username,
+        SELECT id, title, source_ip, severity, evidence->>'username' AS spray_username,
+               evidence ? 'distinct_ips' AS is_spray,
                COALESCE(first_event_time, created_at) AS first_time,
                COALESCE(last_event_time, created_at) AS last_time
         FROM alerts
@@ -76,8 +77,14 @@ async def run_all(conn) -> dict[str, int]:
         first_time, last_time = row["first_time"], row["last_time"]
 
         if source_ip is None:
+            # Nothing to group on without an attacker IP, so the alert stands
+            # as its own incident: a password spray (many IPs, one user), or a
+            # host-level finding such as a cleared Windows event log.
             username = row["spray_username"]
-            title = f"Password spray campaign targeting '{username}'" if username else "Password spray campaign"
+            if row["is_spray"]:
+                title = f"Password spray campaign targeting '{username}'" if username else "Password spray campaign"
+            else:
+                title = row["title"]
             incident_id = await _create_incident(
                 conn, title=title, source_ip=None, severity=severity, first_time=first_time, last_time=last_time
             )

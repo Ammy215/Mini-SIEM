@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 
 from config import settings
-from detection import threshold
+from detection import signature, threshold
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -99,6 +99,48 @@ async def test_windows_failed_logon_burst_triggers_brute_force_detection(client,
         ip,
     )
     assert alert["mitre_technique"] == "T1110"
+
+
+def _security_event(event_id: int, when: datetime, host: str, data: dict[str, str], provider="Microsoft-Windows-Security-Auditing") -> str:
+    fields = "".join(f'<Data Name="{name}">{value}</Data>' for name, value in data.items())
+    return (
+        f'<Event xmlns="{NS}"><System><Provider Name="{provider}"/><EventID>{event_id}</EventID>'
+        f'<TimeCreated SystemTime="{when.strftime("%Y-%m-%dT%H:%M:%S.%f")}0Z"/>'
+        f"<Channel>Security</Channel><Computer>{host}</Computer></System><EventData>{fields}</EventData></Event>"
+    )
+
+
+async def test_a_windows_export_with_attacker_activity_raises_the_windows_alerts(client, admin, batches, conn):
+    host = "PYTEST-WIN01.corp.example"
+    at = datetime.now(timezone.utc) - timedelta(minutes=3)
+    events = [
+        _security_event(4720, at, host, {"TargetUserName": "svc-backup2", "SubjectUserName": "mallory"}),
+        _security_event(4732, at, host, {"TargetUserName": "Administrators", "MemberName": "CN=svc-backup2,DC=corp", "SubjectUserName": "mallory"}),
+        _security_event(4672, at, host, {"SubjectUserName": "mallory", "SubjectDomainName": "CORP"}),
+        _security_event(4672, at, host, {"SubjectUserName": "SYSTEM", "SubjectDomainName": "NT AUTHORITY"}),
+        _security_event(1102, at, host, {"SubjectUserName": "mallory"}, provider="Microsoft-Windows-Eventlog"),
+    ]
+    xml = f'<?xml version="1.0" encoding="UTF-16"?><Events>{"".join(events)}</Events>'
+
+    r = await _upload(client, admin, batches, "attack.xml", xml.encode("utf-16"))
+    assert r.json()["by_parser"] == {"windows": 5}
+
+    await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_key LIKE 'win-%'")
+    await signature.run_all(conn)
+
+    rows = await conn.fetch(
+        """
+        SELECT r.rule_key, a.title, a.severity FROM alerts a JOIN rules r ON r.id = a.rule_id
+        WHERE a.evidence->>'host' = $1 ORDER BY r.rule_key
+        """,
+        host,
+    )
+    assert [(row["rule_key"], row["title"], row["severity"]) for row in rows] == [
+        ("win-account-created", f"Windows account created on {host}", "medium"),
+        ("win-admin-group-add", f"Account added to a privileged group on {host}", "high"),
+        ("win-audit-log-cleared", f"Event log cleared on {host}", "high"),
+        ("win-privileged-logon", f"Privileged logon by mallory on {host}", "low"),
+    ]
 
 
 async def test_billion_laughs_upload_is_refused_quickly_and_stores_nothing(client, admin, batches):

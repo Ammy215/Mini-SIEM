@@ -1,0 +1,24 @@
+title: Successful Login After Brute Force
+rule_key: brute_force_then_success
+severity: critical
+mitre: T1110
+description: >-
+  A login succeeds from a source IP that failed to log in 5 or more times in
+  the 10 minutes before, with the success coming within 10 minutes of the last
+  failure. The guessing may have worked: treat the account as compromised
+  until shown otherwise.
+definition:
+  version: 2
+  sequence:
+    join_on: source_ip
+    first:
+      filter: {field: action, op: eq, value: login_failed}
+      min_count: 5
+      within_minutes: 10
+    then:
+      filter: {field: action, op: eq, value: login_success}
+      within_minutes: 10
+  alert:
+    signal: brute_force_success
+    title: "Login succeeded after repeated failures from {source_ip}"
+    count_key: failed_count

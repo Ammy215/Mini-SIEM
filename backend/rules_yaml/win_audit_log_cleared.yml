@@ -1,0 +1,17 @@
+title: Windows Event Log Cleared
+rule_key: win-audit-log-cleared
+severity: high
+mitre: T1070.001
+description: >-
+  The Security log was cleared (event 1102), or the System log (event 104 from
+  the Eventlog provider). Clearing logs is a classic way to hide what happened
+  just before it.
+definition:
+  version: 2
+  logsource: [windows]
+  filter: {field: action, op: eq, value: audit_log_cleared}
+  alert:
+    group_by: [host]
+    group_window_minutes: 60
+    signal: audit_log_cleared
+    title: "Event log cleared on {host}"

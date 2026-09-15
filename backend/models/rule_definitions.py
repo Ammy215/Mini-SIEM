@@ -230,7 +230,7 @@ def _sequence(sequence, path: str, conditions: list[int]) -> None:
 def _alert(alert, path: str, rule_type: str) -> None:
     allowed = ["signal", "title"]
     if rule_type == "signature":
-        allowed.append("group_window_minutes")
+        allowed += ["group_by", "group_window_minutes"]
     else:
         allowed.append("count_key")
     if rule_type == "threshold":
@@ -243,6 +243,13 @@ def _alert(alert, path: str, rule_type: str) -> None:
         _string(alert["title"], f"{path}.title", MAX_TITLE_CHARS)
         if any(name not in TITLE_PLACEHOLDERS for name in _PLACEHOLDER_RE.findall(alert["title"])):
             _fail(f"{path}.title", f"placeholders must be one of {', '.join('{' + n + '}' for n in TITLE_PLACEHOLDERS)}")
+    if "group_by" in alert:
+        group_by = alert["group_by"]
+        if (
+            not isinstance(group_by, list) or not 1 <= len(group_by) <= 3
+            or any(not _one_of(field, GROUP_FIELDS) for field in group_by) or len(set(group_by)) != len(group_by)
+        ):
+            _fail(f"{path}.group_by", f"must list 1 to 3 different fields from {', '.join(GROUP_FIELDS)}")
     if "group_window_minutes" in alert:
         _int(alert["group_window_minutes"], f"{path}.group_window_minutes", 1, MAX_WINDOW_MINUTES)
     for key in ("count_key", "values_key"):

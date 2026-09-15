@@ -1,0 +1,23 @@
+title: Privileged Logon by a User Account
+rule_key: win-privileged-logon
+severity: low
+mitre: T1078
+description: >-
+  Windows event 4672 - administrator-equivalent privileges assigned to a new
+  logon - for a real user account. Windows' own accounts (SYSTEM, LOCAL
+  SERVICE, NETWORK SERVICE, DWM-/UMFD- sessions) and computer accounts ending
+  in $ are left out. Grouped per user per host per hour; after_hours raises the
+  score when business hours are configured.
+definition:
+  version: 2
+  logsource: [windows]
+  filter:
+    all:
+      - {field: event_code, op: eq, value: "4672"}
+      - not: {field: username, op: endswith, value: "$"}
+      - not: {field: username, op: regex, value: "^(system|local service|network service|dwm-[0-9]+|umfd-[0-9]+)$"}
+  alert:
+    group_by: [host, username]
+    group_window_minutes: 60
+    signal: privileged_logon
+    title: "Privileged logon by {username} on {host}"

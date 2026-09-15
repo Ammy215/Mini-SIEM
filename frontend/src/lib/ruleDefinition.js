@@ -108,7 +108,7 @@ function rootToCondition(root, meta) {
 }
 
 const ALERT_KEYS_BY_TYPE = {
-  signature: ["signal", "title", "group_window_minutes"],
+  signature: ["signal", "title", "group_by", "group_window_minutes"],
   threshold: ["signal", "title", "count_key", "values_key", "values_field"],
   sequence: ["signal", "title", "count_key"],
 };

@@ -1,0 +1,19 @@
+title: Account Added to a Privileged Windows Group
+rule_key: win-admin-group-add
+severity: high
+mitre: T1098
+description: >-
+  Windows events 4728/4732/4756 - a member was added to Administrators, Domain
+  Admins, Enterprise Admins or Schema Admins. Grouped per host per hour.
+definition:
+  version: 2
+  logsource: [windows]
+  filter:
+    all:
+      - {field: raw.group_name, op: regex, value: "^(administrators|domain admins|enterprise admins|schema admins)$"}
+      - {field: action, op: eq, value: group_member_added}
+  alert:
+    group_by: [host]
+    group_window_minutes: 60
+    signal: admin_group_change
+    title: "Account added to a privileged group on {host}"

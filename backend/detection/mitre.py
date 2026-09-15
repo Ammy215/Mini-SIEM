@@ -8,10 +8,14 @@ missing here, so the table can't silently drift behind the rule set.
 TECHNIQUES: dict[str, dict[str, str]] = {
     "T1046": {"name": "Network Service Discovery", "tactic": "Discovery"},
     "T1059.007": {"name": "Command and Scripting Interpreter: JavaScript", "tactic": "Execution"},
+    "T1070.001": {"name": "Indicator Removal: Clear Windows Event Logs", "tactic": "Defense Evasion"},
+    "T1078": {"name": "Valid Accounts", "tactic": "Defense Evasion, Persistence, Privilege Escalation, Initial Access"},
     "T1083": {"name": "File and Directory Discovery", "tactic": "Discovery"},
+    "T1098": {"name": "Account Manipulation", "tactic": "Persistence, Privilege Escalation"},
     "T1110": {"name": "Brute Force", "tactic": "Credential Access"},
     "T1110.003": {"name": "Brute Force: Password Spraying", "tactic": "Credential Access"},
     "T1110.004": {"name": "Brute Force: Credential Stuffing", "tactic": "Credential Access"},
+    "T1136": {"name": "Create Account", "tactic": "Persistence"},
     "T1190": {"name": "Exploit Public-Facing Application", "tactic": "Initial Access"},
     "T1595": {"name": "Active Scanning", "tactic": "Reconnaissance"},
 }

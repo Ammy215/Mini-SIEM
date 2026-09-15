@@ -11,6 +11,12 @@ THREAT_WEIGHTS = {
     "after_hours":              5,
     "foreign_geo":              5,
     "password_spray_confirmed": 20,
+    "brute_force_success":     35,
+    "account_created":         10,
+    "privileged_logon":         5,
+    "audit_log_cleared":       25,
+    "admin_group_change":      20,
+    "host_sweep":              15,
 }
 
 SEVERITY_BANDS = {(0, 25): "low", (25, 50): "medium", (50, 75): "high", (75, 101): "critical"}

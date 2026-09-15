@@ -339,9 +339,12 @@ rule set grows. Know them before claiming what this SIEM can do.
 ### 1. Rule-based, not anomaly-based
 
 Detection is **entirely** driven by patterns explicitly defined as rules — the
-four threshold rules (brute force, credential stuffing, port scan, password
-spray) and four signature rules (SQLi, XSS, path traversal, scanner UA). The
-engine matches; it does not reason.
+built-in rules in `backend/rules_yaml/` (threshold: brute force, credential
+stuffing, port scan, password spray, firewall port scan, host sweep; signature:
+SQLi, XSS, path traversal, scanner UA, Windows account created / privileged
+logon / event log cleared / admin group change; sequence: login success after
+brute force) plus any custom rules an admin writes. The engine matches; it does
+not reason.
 
 **Consequence:** an attack that matches no rule passes through undetected in real
 time. A novel technique, a known technique in an unusual shape, or an attack in a

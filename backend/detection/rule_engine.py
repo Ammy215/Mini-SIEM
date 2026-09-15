@@ -145,9 +145,10 @@ async def _evaluate_match(conn, rule, definition: dict) -> int:
     alert_spec = definition.get("alert", {})
     add = Params()
     where, leaves = _match_filter(definition, add, LOOKBACK_MINUTES, rule["id"])
+    group_by = alert_spec.get("group_by") or ["source_ip"]
     rows = await conn.fetch(
         f"""
-        SELECT e.id, e.event_time, e.source_ip{_leaf_columns(leaves)}
+        SELECT e.id, e.event_time, e.source_ip, e.username, e.host, e.dest_ip, e.event_code{_leaf_columns(leaves)}
         FROM events e
         WHERE {where}
         ORDER BY e.event_time, e.id
@@ -156,9 +157,12 @@ async def _evaluate_match(conn, rule, definition: dict) -> int:
         *add.values,
     )
 
+    # One alert per distinct combination of the group_by values (by default,
+    # per attacker IP). Windows events often have no IP, so those rules group
+    # by host or user instead.
     groups: dict[str, list] = {}
     for row in rows:
-        groups.setdefault(_text(row["source_ip"]) or "", []).append(row)
+        groups.setdefault("|".join(_text(row[field]) or "" for field in group_by), []).append(row)
 
     created = 0
     for group_key, hits in groups.items():
@@ -176,13 +180,18 @@ async def _evaluate_match(conn, rule, definition: dict) -> int:
             "last_seen": iso(last["event_time"]),
             "hit_count": len(hits),
         }
-        source_ip = group_key or None
+        for field in group_by:
+            if field != "source_ip":
+                evidence[field] = _text(first[field])
+        source_ip = _text(first["source_ip"]) if "source_ip" in group_by else None
+        title_values = {field: _text(first[field]) for field in ("source_ip", "username", "host", "dest_ip", "event_code")}
+        title_values["group"] = group_key or None
         alert_id, is_new = await upsert_alert(
             conn, rule=rule, group_key=group_key, source_ip=source_ip,
             first_time=first["event_time"], last_time=last["event_time"], evidence=evidence,
             signals=_signals(alert_spec),
             merge_minutes=alert_spec.get("group_window_minutes", DEFAULT_GROUP_WINDOW_MINUTES),
-            title=render_title(alert_spec.get("title"), {"source_ip": source_ip, "group": source_ip}, rule["title"]),
+            title=render_title(alert_spec.get("title"), title_values, rule["title"]),
         )
         await link_events(conn, rule["id"], alert_id, event_ids)
         created += is_new

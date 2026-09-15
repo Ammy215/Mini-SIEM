@@ -368,6 +368,20 @@ Configure in `backend/.env` (blank = not configured): `HOME_COUNTRIES=US,GB`,
 | Q7 🛡️ | Rate-limit backoff | ipinfo answers HTTP 429 | ipinfo isn't asked again for 24 h (`provider_backoff`); AbuseIPDB's cached country is used meanwhile |
 | Q8 🔧 | Lookups switched off | `ENABLE_GEO_LOOKUPS=false` | no ipinfo calls; Settings shows Disabled |
 
+### R. New built-in detections (Phase 22)
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| R1 🔧 | Brute force that worked | from one IP: 5 failed logins, then a successful one within 10 min (ssh, Windows 4625→4624, or `/api/ingest`) | **critical** "Login succeeded after repeated failures from <ip>" (T1110), alongside any brute-force alert |
+| R2 🔧 | …and the look-alikes | 4 failures then success; the success 11+ min after the last failure; the success from a different IP | no alert from `brute_force_then_success` |
+| R3 🔧 | Windows account created | upload an export containing event 4720 | medium "Windows account created on <host>" (T1136); several on one host within an hour → one alert, hit count grows |
+| R4 🔧 | Privileged logon | 4672 for a real user | low "Privileged logon by <user> on <host>" (T1078), one per user per host per hour; **none** for SYSTEM, LOCAL/NETWORK SERVICE, DWM-n, UMFD-n, or `NAME$` computer accounts |
+| R5 🔧 | Event log cleared | 1102 (Security), or 104 from the Eventlog provider | high "Event log cleared on <host>" (T1070.001); a 104 from another provider → nothing |
+| R6 🔧 | Added to an admin group | 4728/4732/4756 into Administrators, Domain Admins, Enterprise Admins or Schema Admins | high "Account added to a privileged group on <host>" (T1098); Remote Desktop Users or a look-alike name → nothing |
+| R7 🔧 | Firewall port scan | UFW/iptables/CEF log: one IP **blocked** on 10+ ports in 5 min | medium "Firewall blocked a port scan from <ip>" (T1046); 9 ports, or allowed traffic → nothing |
+| R8 🔧 | Host sweep | firewall log: one IP to 10+ destination addresses in 5 min | medium "Host sweep from <ip>" with the addresses in evidence; 9 → nothing |
+| R9 🔧 | Host-level incidents | any R3–R6 alert (no attacker IP) | its own incident, titled like the alert — not "Password spray campaign" |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist

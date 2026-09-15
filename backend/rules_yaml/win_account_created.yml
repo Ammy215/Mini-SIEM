@@ -1,0 +1,17 @@
+title: Windows Account Created
+rule_key: win-account-created
+severity: medium
+mitre: T1136
+description: >-
+  Windows event 4720 - a user account was created. Attackers add accounts to
+  keep access. Grouped per host per hour; check the new account against change
+  tickets.
+definition:
+  version: 2
+  logsource: [windows]
+  filter: {field: event_code, op: eq, value: "4720"}
+  alert:
+    group_by: [host]
+    group_window_minutes: 60
+    signal: account_created
+    title: "Windows account created on {host}"

@@ -1,0 +1,23 @@
+title: Host Sweep Seen by the Firewall
+rule_key: firewall-host-sweep
+severity: medium
+mitre: T1046
+description: >-
+  One source IP reached for 10 or more different destination addresses within
+  5 minutes, as logged by a firewall - looking for which machines are there.
+definition:
+  version: 2
+  logsource: [firewall]
+  aggregate:
+    group_by: source_ip
+    window_minutes: 5
+    function: distinct
+    distinct_field: dest_ip
+    op: gte
+    threshold: 10
+  alert:
+    signal: host_sweep
+    title: "Host sweep from {source_ip}"
+    count_key: distinct_hosts
+    values_key: dest_ips
+    values_field: dest_ip

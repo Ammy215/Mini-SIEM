@@ -211,7 +211,11 @@ async def test_failures_followed_by_a_success_fire_once(conn):
     assert (await rule_engine.run_rules(conn, "sequence"))[SEQUENCE_KEY] == 1
     assert (await rule_engine.run_rules(conn, "sequence"))[SEQUENCE_KEY] == 0
 
-    alert = await conn.fetchrow("SELECT * FROM alerts WHERE source_ip = $1::inet", ip)
+    # The built-in brute_force_then_success rule fires on the same events; this is the test rule's alert.
+    alert = await conn.fetchrow(
+        "SELECT * FROM alerts WHERE source_ip = $1::inet AND rule_id = (SELECT id FROM rules WHERE rule_key = $2)",
+        ip, SEQUENCE_KEY,
+    )
     evidence = json.loads(alert["evidence"])
     assert alert["title"] == f"Login succeeded after failures from {ip}"
     assert alert["severity"] == "critical"
