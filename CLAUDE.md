@@ -496,9 +496,14 @@ GET    /api/events              ← filter, paginate, full-text search
 GET    /api/events/{id}
 
 # rules + detection
-GET    /api/rules
-POST   /api/rules
+GET    /api/rules               ← includes each rule's last run / last error
+GET    /api/rules/meta          ← fields, operators, signals, techniques for the builder
+POST   /api/rules               ← admin: create a custom rule (v2 definition)
+POST   /api/rules/validate      ← admin: check a definition, returns its rule type
+POST   /api/rules/preview       ← admin: dry run over ≤7 days of events, writes nothing
 PUT    /api/rules/{id}
+DELETE /api/rules/{id}          ← admin: custom rules with no alerts only
+POST   /api/rules/{id}/reset    ← admin: built-in back to the shipped definition
 POST   /api/rules/{id}/toggle
 POST   /api/detect/run          ← manually trigger a detection pass
 

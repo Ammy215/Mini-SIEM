@@ -87,6 +87,29 @@ def validate_definition(definition) -> tuple[dict, str]:
     return copy.deepcopy(definition), rule_type
 
 
+def regex_patterns(definition: dict) -> list[tuple[str, str]]:
+    """(location, pattern) for every regex condition in a validated definition."""
+    found: list[tuple[str, str]] = []
+
+    def walk(condition, path):
+        for key in ("all", "any"):
+            if key in condition:
+                for index, item in enumerate(condition[key]):
+                    walk(item, f"{path}.{key}.{index}")
+                return
+        if "not" in condition:
+            walk(condition["not"], f"{path}.not")
+        elif condition.get("op") == "regex":
+            found.append((f"{path}.value", condition["value"]))
+
+    if "filter" in definition:
+        walk(definition["filter"], "definition.filter")
+    if "sequence" in definition:
+        for step in ("first", "then"):
+            walk(definition["sequence"][step]["filter"], f"definition.sequence.{step}.filter")
+    return found
+
+
 def validate_rule_severity(severity) -> None:
     if severity not in SEVERITY_ORDER:
         raise InvalidDefinition(f"severity: must be one of {', '.join(SEVERITY_ORDER)}")

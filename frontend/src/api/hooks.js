@@ -88,6 +88,36 @@ export function useResetRule() {
   });
 }
 
+export function useRuleMeta() {
+  return useQuery({
+    queryKey: ["rules", "meta"],
+    queryFn: async () => (await api.get("/api/rules/meta")).data,
+    staleTime: Infinity,
+  });
+}
+
+export function useCreateRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body) => (await api.post("/api/rules", body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rules"] }),
+  });
+}
+
+export function useDeleteRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ruleId) => (await api.delete(`/api/rules/${ruleId}`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rules"] }),
+  });
+}
+
+export function usePreviewRule() {
+  return useMutation({
+    mutationFn: async ({ definition, hours }) => (await api.post("/api/rules/preview", { definition, hours })).data,
+  });
+}
+
 export function useEnrichIp() {
   return useMutation({
     mutationFn: async (ip) => (await api.get(`/api/enrich/ip/${ip}`)).data,

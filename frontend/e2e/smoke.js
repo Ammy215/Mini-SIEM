@@ -119,7 +119,20 @@ async function main() {
   await page.waitForSelector("text=Showing events from one upload", { timeout: 10000 });
   check("'View these events' opens Events filtered to the upload", true);
 
-  console.log("5. Mobile responsive check");
+  console.log("5. Build and test a rule (nothing is saved)");
+  await page.goto(`${FRONTEND_URL}/rules`, { waitUntil: "networkidle" });
+  await page.click('button:has-text("New rule")');
+  await page.waitForSelector("text=New detection rule", { timeout: 10000 });
+  await page.fill('input[aria-label="Value"]', "/e2e-rule-preview");
+  await page.click('button:has-text("Test rule")');
+  await page.waitForSelector("text=Nothing was saved", { timeout: 20000 });
+  check("rule preview runs from the builder", true);
+  await page.click('button:has-text("JSON")');
+  const definitionJson = await page.locator('textarea[aria-label="Definition JSON"]').inputValue();
+  check("builder conditions carry over to the JSON tab", definitionJson.includes('"/e2e-rule-preview"'));
+  await page.click('button:has-text("Cancel")');
+
+  console.log("6. Mobile responsive check");
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto(FRONTEND_URL, { waitUntil: "networkidle" });
   await page.waitForSelector('h1:has-text("Dashboard")', { timeout: 10000 });

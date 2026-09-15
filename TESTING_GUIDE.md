@@ -336,6 +336,21 @@ carefully — this is the pre-deploy regression pass.
 | O8 🔧 | Threshold evidence unchanged | 11 failed logins from one IP | alert title "Brute force login attempts from <ip>", evidence has `failed_count`, `usernames`, `first_seen`/`last_seen` — AI summary still reads them |
 | O9 🔧 | Incident timeline uses event time | upload a log, run detection | incident first/last seen match when the events happened, not when detection ran |
 
+### P. Custom rules: builder, test, delete, health (Phase 20)
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| P1 🔧 | Create a signature rule in the builder | admin → Rules → **New rule** → key `admin-panel-probe`, type Signature, condition `url` contains `/wp-admin` → Create; then send a request to `/wp-admin` and Run detection | listed with a **Custom** badge; the request raises one alert from it |
+| P2 🔧 | Threshold rule | New rule → Threshold → count `number of events` per `source_ip` over 5 min, at least 20, with condition `status_code` ≥ 400 | saved; 20+ error responses from one IP → one alert |
+| P3 🔧 | Sequence rule | New rule → Sequence → same `source_ip`; step 1: at least 5 `action` equals `login_failed` in 10 min; step 2: `action` equals `login_success` within 10 min | 5 failures then a success from one IP → one alert; 4 failures, or a success first → none |
+| P4 🔧 | Test rule before saving | in the dialog, **Test rule** over 24 h / 7 days | shows how many events or windows would have matched plus sample rows; **no alert is created** (Alerts count unchanged) |
+| P5 🔧 | Builder ↔ JSON | build conditions (a nested ANY group, a NOT), switch to JSON, edit a value, switch back | both directions keep the same logic; invalid JSON stops the switch with a message |
+| P6 🛡️ | Analysts and viewers can't author | as analyst: no New rule button; `POST /api/rules`, `/validate`, `/preview`, `DELETE` → 403 | 403 everywhere; analyst can still toggle and rename |
+| P7 🛡️ | Hostile or broken rules | field `password_hash`; regex `(unclosed`; regex with `\1`; key `Bad Key!`; key `brute_force`; MITRE `T9999` | 422 (409 for a built-in key) with a message that never echoes the value; nothing saved |
+| P8 🛡️ | Preview can't be abused | 21 previews within a minute; `hours: 169` | the 21st → 429; 169 h → 422 |
+| P9 🔧 | Delete a custom rule | delete one that never alerted; try one that has alerts; try a built-in | first → gone, audit `rule_deleted`; with alerts → 409 "switch it off instead"; built-in → 400 |
+| P10 🔧 | Rule health | save a rule, break it straight in the DB (or wait for a timeout), Run detection | Rules page shows a red **Error** badge whose tooltip says why (no raw database text); fixing it clears the badge |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist
