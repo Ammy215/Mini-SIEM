@@ -1,0 +1,20 @@
+title: Port Scan
+rule_key: port_scan
+severity: medium
+mitre: T1046
+description: 15 or more distinct destination ports touched by a single source IP within 5 minutes.
+definition:
+  version: 2
+  aggregate:
+    group_by: source_ip
+    window_minutes: 5
+    function: distinct
+    distinct_field: dest_port
+    op: gte
+    threshold: 15
+  alert:
+    signal: port_scan
+    title: "Port scan from {source_ip}"
+    count_key: distinct_ports
+    values_key: ports
+    values_field: dest_port

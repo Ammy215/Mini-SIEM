@@ -4,6 +4,7 @@ that survive a restart.
 These go through the real API, so changes are committed. The two rules they
 touch are snapshotted before each test and restored exactly afterwards."""
 
+import copy
 import json
 import uuid
 
@@ -82,6 +83,20 @@ async def _rule(client, headers, rule_key):
     return next(r for r in rules if r["rule_key"] == rule_key)
 
 
+def _with(definition: dict, path: str, value) -> dict:
+    """A copy of `definition` with the dotted `path` set to `value`."""
+    changed = copy.deepcopy(definition)
+    *parents, last = path.split(".")
+    target = changed
+    for key in parents:
+        target = target[key]
+    target[last] = value
+    return changed
+
+
+_PORT_SCAN = builtin_rules()[THRESHOLD_KEY]["definition"]
+
+
 async def test_an_analysts_title_and_severity_edit_survives_a_restart(client, pool, analyst):
     rule = await _rule(client, analyst, THRESHOLD_KEY)
 
@@ -100,7 +115,7 @@ async def test_an_analysts_title_and_severity_edit_survives_a_restart(client, po
 
 async def test_only_admins_can_change_what_a_rule_detects(client, admin, analyst):
     rule = await _rule(client, admin, THRESHOLD_KEY)
-    tuned = {**rule["definition"], "window_minutes": 7}
+    tuned = _with(rule["definition"], "aggregate.window_minutes", 7)
 
     r = await client.put(f"/api/rules/{rule['id']}", json={"definition": tuned}, headers=analyst)
     assert r.status_code == 403
@@ -108,12 +123,12 @@ async def test_only_admins_can_change_what_a_rule_detects(client, admin, analyst
 
     r = await client.put(f"/api/rules/{rule['id']}", json={"definition": tuned}, headers=admin)
     assert r.status_code == 200, r.text
-    assert r.json()["definition"]["window_minutes"] == 7
+    assert r.json()["definition"]["aggregate"]["window_minutes"] == 7
 
 
 async def test_an_admins_definition_edit_survives_a_restart(client, pool, admin):
     rule = await _rule(client, admin, SIGNATURE_KEY)
-    tuned = {**rule["definition"], "contains": ["sqlmap", "nikto", "nmap", "masscan"]}
+    tuned = _with(rule["definition"], "filter.value", ["sqlmap", "nikto", "nmap", "masscan"])
 
     r = await client.put(f"/api/rules/{rule['id']}", json={"definition": tuned}, headers=admin)
     assert r.status_code == 200, r.text
@@ -121,14 +136,15 @@ async def test_an_admins_definition_edit_survives_a_restart(client, pool, admin)
     async with pool.acquire() as conn:
         await engine.seed_all(conn)
 
-    assert "masscan" in (await _rule(client, admin, SIGNATURE_KEY))["definition"]["contains"]
+    assert "masscan" in (await _rule(client, admin, SIGNATURE_KEY))["definition"]["filter"]["value"]
 
 
 async def test_admin_reset_restores_the_shipped_rule_but_keeps_its_on_off_state(client, admin):
     rule = await _rule(client, admin, THRESHOLD_KEY)
     r = await client.put(
         f"/api/rules/{rule['id']}",
-        json={"title": "Custom title", "severity": "critical", "definition": {**rule["definition"], "threshold": 40}},
+        json={"title": "Custom title", "severity": "critical",
+              "definition": _with(rule["definition"], "aggregate.threshold", 40)},
         headers=admin,
     )
     assert r.status_code == 200, r.text
@@ -189,8 +205,13 @@ async def test_an_update_that_changes_nothing_does_not_mark_the_rule_modified(cl
         ({"severity": "urgent"}, None),
         ({"unknown_field": "x"}, None),
         ({"title": ""}, None),
-        ({"definition": {"window_minutes": 0, "threshold": 5}}, "definition.window_minutes"),
-        ({"definition": {"window_minutes": 5, "threshold": 15, "group_by": "username"}}, "group_by is fixed"),
+        ({"definition": _with(_PORT_SCAN, "aggregate.window_minutes", 0)}, "definition.aggregate.window_minutes"),
+        ({"definition": _with(_PORT_SCAN, "aggregate.distinct_field", "password")}, "definition.aggregate.distinct_field"),
+        # A valid definition, but for a different kind of rule.
+        ({"definition": {"version": 2, "filter": {"field": "url", "op": "contains", "value": "x"}}},
+         "describes a signature rule, but this is a threshold rule"),
+        # The v1 shape is no longer accepted.
+        ({"definition": {"window_minutes": 5, "threshold": 15}}, "definition.version: required"),
     ],
 )
 async def test_invalid_edits_are_rejected_with_a_422(client, admin, body, detail_fragment):

@@ -301,20 +301,26 @@ SEVERITY_BANDS = {(0,25):"low",(25,50):"medium",(50,75):"high",(75,101):"critica
 N minutes of `events`, grouped by `source_ip`. Each match → an `alert` with the
 triggering events stored in `evidence`.
 
-**Signature rules** load from YAML in `backend/rules_yaml/`. Example shape:
+**All built-in rules** (threshold and signature) load from YAML in
+`backend/rules_yaml/`, written in the v2 rule language (Phase 19,
+`models/rule_definitions.py`). The definition's shape sets the rule type:
+`filter` → signature, `filter` + `aggregate` → threshold, `sequence` → sequence.
+Example shape:
 ```yaml
 title: SQL Injection Attempt in HTTP Request
 rule_key: sqli-http-001
-rule_type: signature
-severity: high
+severity: high            # a minimum; score can raise it
 mitre: T1190
-logsource: nginx
-detection:
-  field: url
-  contains: ["' OR 1=1", "UNION SELECT", "' OR '1'='1", "--", "/*"]
-  condition: any
+definition:
+  version: 2
+  logsource: [nginx]
+  filter: {field: url, op: contains_any, value: ["UNION SELECT", "' OR 1=1"]}
+  alert: {group_window_minutes: 60, signal: sqli_pattern}
 ```
-On startup, YAML rules are synced into the `rules` table so they're editable in
+Fields come from a whitelist (`detection/rule_fields.py`); every value is a
+bound SQL parameter (`detection/compiler.py`). Repeat hits from one attacker
+extend one open alert (`detection/alerting.py`). On startup, YAML rules are
+synced into the `rules` table (untouched built-ins only) so they're editable in
 the UI and toggleable per rule.
 
 **Correlation → incidents:** alerts from the same `source_ip` inside a time

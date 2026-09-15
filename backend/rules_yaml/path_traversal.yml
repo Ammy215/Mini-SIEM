@@ -1,12 +1,15 @@
 title: Path Traversal Attempt in HTTP Request
 rule_key: path-traversal-001
-rule_type: signature
 severity: high
 mitre: T1083
 description: Detects directory traversal sequences and access to sensitive files like /etc/passwd.
-logsource: nginx
-detection:
-  field: url
-  contains: ["../", "/etc/passwd"]
-  condition: any
-  signal: path_traversal
+definition:
+  version: 2
+  logsource: [nginx]
+  filter:
+    field: url
+    op: contains_any
+    value: ["../", "/etc/passwd"]
+  alert:
+    group_window_minutes: 60
+    signal: path_traversal

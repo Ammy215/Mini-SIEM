@@ -1,0 +1,20 @@
+title: Brute Force Login Attempts
+rule_key: brute_force
+severity: high
+mitre: T1110
+description: More than 10 failed login attempts from a single source IP within 5 minutes.
+definition:
+  version: 2
+  filter: {field: action, op: eq, value: login_failed}
+  aggregate:
+    group_by: source_ip
+    window_minutes: 5
+    function: count
+    op: gt
+    threshold: 10
+  alert:
+    signal: brute_force_confirmed
+    title: "Brute force login attempts from {source_ip}"
+    count_key: failed_count
+    values_key: usernames
+    values_field: username

@@ -1,11 +1,14 @@
 title: Known Scanner Tool User-Agent
 rule_key: scanner-ua-001
-rule_type: signature
 severity: medium
 mitre: T1595
 description: Detects User-Agent strings from common vulnerability scanning tools.
-detection:
-  field: user_agent
-  contains: ["sqlmap", "nikto", "nmap"]
-  condition: any
-  signal: scanner_user_agent
+definition:
+  version: 2
+  filter:
+    field: user_agent
+    op: contains_any
+    value: ["sqlmap", "nikto", "nmap"]
+  alert:
+    group_window_minutes: 60
+    signal: scanner_user_agent

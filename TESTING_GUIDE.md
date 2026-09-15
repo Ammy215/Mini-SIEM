@@ -1,6 +1,6 @@
 # 🧪 Pre-Deployment Testing Guide
 
-One reference for the manual pass before Phase 12 (deployment). Covers: what
+One reference for the manual pass before deployment (Phase 27). Covers: what
 each role's dashboard looks like, every way to get data into the system, how
 to investigate what the system found, and a full test-case catalog (functional
 + security/adversarial) to run against the local dev servers before you touch
@@ -34,6 +34,7 @@ without constantly logging out.
 |---|---|---|---|
 | Dashboard | ✅ | ✅ | ✅ |
 | Events | ✅ | ✅ | ✅ (read-only) |
+| Upload Logs | ✅ | ✅ | ❌ not in nav; `/upload` says the role is required |
 | Alerts | ✅ full actions | ✅ full actions | ✅ view only, no ack/resolve buttons |
 | Incidents | ✅ | ✅ | ✅ view only |
 | Rules | ✅ everything, incl. detection logic and "Reset to default" | ✅ title, minimum severity, on/off (logic shown read-only) | ✅ view only, no toggle |
@@ -98,8 +99,6 @@ strict: lines that don't match are skipped, each with a reason.
 | `kv` | 3+ `key=value` pairs (firewalls, appliances) | `srcip`, `dstport`, `action`, and split `date=` + `time=` mapped |
 | `csv` | CSV / TSV with a header row | columns mapped by name; quoted delimiters handled; ragged rows tolerated |
 | `generic` | anything (catch-all) | stored as-is; an ISO timestamp is used if present; IPs listed in `_ips_found`, never promoted to `source_ip` |
-
-Windows Event Logs (Phase 16) and firewall iptables/CEF (Phase 17) come next.
 
 Every parsed line is validated against the `EventIn` model before insert.
 Limits — 10 MB per file, 256 KB per line, 200,000 lines, 1,000 events per
@@ -166,7 +165,7 @@ carefully — this is the pre-deploy regression pass.
 | B3 🔧 | Ingest JSON batch | `POST /api/ingest` array body | all valid rows inserted |
 | B4 🛡️ | Bad IP in upload | one line with `source_ip: "not-an-ip"` | that line **skipped**, rest inserted, response reports `skipped: 1` — not a 500 |
 | B5 🛡️ | Wrong type in JSON ingest | `dest_port: "abc"` (string not int) | skipped, not 500 |
-| B6 🛡️ | NUL byte in a field | `username: "root "` | 422, not 500 |
+| B6 🛡️ | NUL byte in a field | `username: "root\u0000"` | 422, not 500 |
 | B7 🛡️ | Oversized single upload | a very large file | confirm it doesn't hang/crash the process (no hard limit currently enforced — note if this needs a cap before real-world use) |
 | B8 🔧 | Empty file upload | 0-byte file | graceful `parsed: 0` response, no crash |
 | B9 🛡️ | Impossible date in an ssh/syslog/nginx upload | a line dated `Feb 30` among valid lines | 200; that line skipped with `skipped_reasons: {"invalid_timestamp": 1}` — not a 500 (fixed in Phase 13) |
@@ -317,11 +316,25 @@ carefully — this is the pre-deploy regression pass.
 |---|---|---|---|
 | N1 🔧 | Analyst tunes a rule | as analyst, Rules → edit → change title and minimum severity → Save; then restart the backend | saved with a "Modified" badge, and still there after the restart (edits used to be wiped on every restart) |
 | N2 🛡️ | Analyst tries to change detection logic | as analyst, open the edit dialog; or `PUT /api/rules/{id}` with a `definition` | the logic shows read-only in the UI; the API returns 403 |
-| N3 🔧 | Admin tunes detection logic | as admin, e.g. `port_scan` threshold 15 → 10 → Save; restart | saved and kept across the restart; detection uses the new value |
-| N4 🛡️ | Invalid or hostile definitions | `window_minutes: 0`, an unknown key, a signature `field` of `url; DROP TABLE alerts; --`, a changed `group_by` | 422 with a readable message that never echoes the submitted value; nothing saved |
+| N3 🔧 | Admin tunes detection logic | as admin, e.g. `port_scan` `aggregate.threshold` 15 → 10 → Save; restart | saved and kept across the restart; detection uses the new value |
+| N4 🛡️ | Invalid or hostile definitions | `aggregate.window_minutes: 0`, an unknown key, a `filter.field` of `url; DROP TABLE alerts; --`, a regex with `\1`, an old v1 definition (no `version`), a signature-shaped definition on a threshold rule | 422 with a readable message that never echoes the submitted value; nothing saved |
 | N5 🔧 | Admin "Reset to default" | on a Modified built-in rule, click Reset → Confirm | shipped title, severity and logic restored; badge gone; on/off switch unchanged; audit log has `rule_reset` |
 | N6 🔧 | Rule severity is a minimum | 11 failed logins from one IP within 5 min (`brute_force` is high) | the alert is **high** even though its base score is 30 (the medium band); threat intel can raise it, never lower it |
 | N7 🔧 | Edits are audited with what changed | edit a rule, then Admin → Audit Log | `rule_updated` entry lists each changed field with its old and new value |
+
+### O. Rule engine v2 and alert grouping (Phase 19)
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| O1 🔧 | Rules shown in the v2 language | Rules → edit any rule | JSON has `version: 2`; signature rules have a `filter`, threshold rules an `aggregate`; all 8 rules still enabled and firing as before |
+| O2 🔧 | Repeat hits make one alert | send 3 XSS requests from one IP (`/api/ingest`), Run detection | **one** XSS alert; its evidence shows `hit_count: 3` and 3 `event_ids` (used to be 3 separate alerts) |
+| O3 🔧 | Rerun doesn't duplicate | Run detection again with nothing new | the XSS result is 0; still one alert |
+| O4 🔧 | Later hits extend the open alert | another XSS request from the same IP within 60 min, Run detection | same alert, `hit_count` goes up, last-seen moves later |
+| O5 🔧 | Triaged alerts aren't reopened | acknowledge the alert, send one more hit, Run detection | a **new** alert for the new hit; the acknowledged one is untouched |
+| O6 🔧 | Different attackers stay separate | XSS hits from two IPs | two alerts, one per IP |
+| O7 🛡️ | Pattern wildcards are literal | admin sets a signature pattern containing `_` or `%` | `_` and `%` only match those literal characters, never "any character" |
+| O8 🔧 | Threshold evidence unchanged | 11 failed logins from one IP | alert title "Brute force login attempts from <ip>", evidence has `failed_count`, `usernames`, `first_seen`/`last_seen` — AI summary still reads them |
+| O9 🔧 | Incident timeline uses event time | upload a log, run detection | incident first/last seen match when the events happened, not when detection ran |
 
 ---
 

@@ -31,7 +31,8 @@ async def test_an_untouched_builtin_keeps_tracking_the_shipped_definition(conn):
 
 
 async def test_an_edited_rule_survives_a_restart(conn):
-    edited = {**builtin_rules()["brute_force"]["definition"], "window_minutes": 20}
+    edited = builtin_rules()["brute_force"]["definition"]
+    edited["aggregate"]["window_minutes"] = 20
     await conn.execute(
         """UPDATE rules SET title = 'Tuned brute force', severity = 'critical', definition = $1::jsonb,
            user_modified = TRUE WHERE rule_key = 'brute_force'""",
@@ -43,7 +44,7 @@ async def test_an_edited_rule_survives_a_restart(conn):
     rule = await _rule(conn, "brute_force")
     assert rule["title"] == "Tuned brute force"
     assert rule["severity"] == "critical"
-    assert rule["definition"]["window_minutes"] == 20
+    assert rule["definition"]["aggregate"]["window_minutes"] == 20
     assert rule["user_modified"] is True
 
 
@@ -120,8 +121,9 @@ async def test_enrichment_escalation_never_lowers_an_alerts_severity(conn):
 
 
 async def test_a_poisoned_field_written_straight_to_the_table_still_never_reaches_sql(conn):
-    """The Rules API rejects this now; the evaluator's own whitelist stays as a second layer."""
-    poisoned = {**builtin_rules()["sqli-http-001"]["definition"], "field": "url FROM events; DROP TABLE alerts; --"}
+    """The Rules API rejects this; the engine validates again before running a rule."""
+    poisoned = builtin_rules()["sqli-http-001"]["definition"]
+    poisoned["filter"]["field"] = "url FROM events; DROP TABLE alerts; --"
     await conn.execute(
         "UPDATE rules SET definition = $1::jsonb, enabled = TRUE WHERE rule_key = 'sqli-http-001'",
         json.dumps(poisoned),

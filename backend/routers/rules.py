@@ -74,11 +74,14 @@ async def update_rule(
         definition = None
         if body.definition is not None:
             try:
-                definition = validate_definition(
-                    existing["rule_type"], body.definition, builtin_rules().get(existing["rule_key"])
-                )
+                definition, rule_type = validate_definition(body.definition)
             except InvalidDefinition as exc:
                 raise HTTPException(status_code=422, detail=str(exc))
+            if rule_type != existing["rule_type"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"definition: describes a {rule_type} rule, but this is a {existing['rule_type']} rule",
+                )
 
         changes = _changes(existing, body, definition)
         if not changes:

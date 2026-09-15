@@ -1,10 +1,9 @@
-from detection import signature, threshold
 from detection.mitre import TECHNIQUES, technique_info
+from detection.seeding import builtin_rules
 
 
 def test_every_technique_a_rule_can_emit_has_an_official_name():
-    emitted = {rule["mitre_technique"] for rule in threshold.SEED_DEFS}
-    emitted |= {rule["mitre"] for rule in signature.load_yaml_rules()}
+    emitted = {rule["mitre_technique"] for rule in builtin_rules().values()}
     missing = emitted - TECHNIQUES.keys()
     assert not missing, f"add these to detection/mitre.py: {sorted(missing)}"
 

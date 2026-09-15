@@ -119,7 +119,7 @@ function EditRuleDialog({ rule, isAdmin, open, onOpenChange }) {
               <Textarea
                 id="rule-definition"
                 className="font-mono text-xs"
-                rows={8}
+                rows={14}
                 value={definitionText}
                 onChange={(e) => setDefinitionText(e.target.value)}
               />

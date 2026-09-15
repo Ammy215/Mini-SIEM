@@ -2,7 +2,7 @@
 
 import pytest
 
-from detection import signature, threshold
+from detection import rule_engine, signature, threshold
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -24,27 +24,30 @@ def _first_call_fails():
     return evaluator, calls
 
 
-async def test_failing_threshold_rule_rolls_back_alone_and_later_rules_still_run(conn, monkeypatch):
-    await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_type = 'threshold'")
+@pytest.mark.parametrize("rule_type,run", [("threshold", threshold.run_all), ("signature", signature.run_all)])
+async def test_a_failing_rule_rolls_back_alone_and_later_rules_still_run(conn, monkeypatch, rule_type, run):
+    await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_type = $1", rule_type)
+    rule_count = await conn.fetchval("SELECT count(*) FROM rules WHERE rule_type = $1", rule_type)
     evaluator, calls = _first_call_fails()
-    for key in list(threshold._EVALUATORS):
-        monkeypatch.setitem(threshold._EVALUATORS, key, evaluator)
+    monkeypatch.setattr(rule_engine, "evaluate_rule", evaluator)
 
-    results = await threshold.run_all(conn)
+    results = await run(conn)
 
-    assert len(calls) == len(threshold._EVALUATORS)
-    assert sorted(results.values()) == [0] + [7] * (len(calls) - 1)
-    assert await conn.fetchval("SELECT count(*) FROM alerts WHERE title = 'half-written'") == 0
-
-
-async def test_failing_signature_rule_rolls_back_alone_and_later_rules_still_run(conn, monkeypatch):
-    await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_type = 'signature'")
-    rule_count = await conn.fetchval("SELECT count(*) FROM rules WHERE rule_type = 'signature'")
-    evaluator, calls = _first_call_fails()
-    monkeypatch.setattr(signature, "_evaluate_signature_rule", evaluator)
-
-    results = await signature.run_all(conn)
-
+    assert rule_count >= 2
     assert len(calls) == rule_count
     assert sorted(results.values()) == [0] + [7] * (rule_count - 1)
     assert await conn.fetchval("SELECT count(*) FROM alerts WHERE title = 'half-written'") == 0
+
+
+async def test_a_slow_rule_is_cancelled_by_the_statement_timeout(conn, monkeypatch):
+    await conn.execute("UPDATE rules SET enabled = TRUE WHERE rule_type = 'signature'")
+    monkeypatch.setattr(rule_engine, "STATEMENT_TIMEOUT", "200ms")
+
+    async def slow(conn, rule):
+        return await conn.fetchval("SELECT 1 FROM pg_sleep(2)")
+
+    monkeypatch.setattr(rule_engine, "evaluate_rule", slow)
+    results = await signature.run_all(conn)
+
+    assert results and set(results.values()) == {0}
+    assert await conn.fetchval("SELECT 1") == 1  # the connection is still usable

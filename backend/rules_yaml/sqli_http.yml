@@ -1,6 +1,5 @@
 title: SQL Injection Attempt in HTTP Request
 rule_key: sqli-http-001
-rule_type: signature
 severity: high
 mitre: T1190
 description: >-
@@ -8,23 +7,27 @@ description: >-
   SQL structure (UNION SELECT, tautologies, schema probing, time-based delays)
   rather than bare comment markers - a lone "--" matched any URL containing a
   double hyphen, which is far too loose to be a signal on its own.
-logsource: nginx
-detection:
-  field: url
-  contains:
-    - "UNION SELECT"
-    - "UNION ALL SELECT"
-    - "' OR 1=1"
-    - "' OR '1'='1"
-    - "\" OR 1=1"
-    - "OR 1=1"
-    - "' AND '1'='1"
-    - "'--"
-    - "' #"
-    - "information_schema"
-    - "SLEEP("
-    - "WAITFOR DELAY"
-    - "BENCHMARK("
-    - "xp_cmdshell"
-  condition: any
-  signal: sqli_pattern
+definition:
+  version: 2
+  logsource: [nginx]
+  filter:
+    field: url
+    op: contains_any
+    value:
+      - "UNION SELECT"
+      - "UNION ALL SELECT"
+      - "' OR 1=1"
+      - "' OR '1'='1"
+      - "\" OR 1=1"
+      - "OR 1=1"
+      - "' AND '1'='1"
+      - "'--"
+      - "' #"
+      - "information_schema"
+      - "SLEEP("
+      - "WAITFOR DELAY"
+      - "BENCHMARK("
+      - "xp_cmdshell"
+  alert:
+    group_window_minutes: 60
+    signal: sqli_pattern
