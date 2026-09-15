@@ -90,6 +90,8 @@ strict: lines that don't match are skipped, each with a reason.
 | `ssh` | OpenSSH auth results (`Failed`/`Accepted` password or publickey) | username, source_ip, `login_failed` / `login_success` |
 | `nginx` | Nginx / Apache combined access log | URL decoded for signature rules; original kept in `raw.url_raw` |
 | `windows` | Windows Event Log: Event Viewer / `wevtutil` XML, or PowerShell `Get-WinEvent \| ConvertTo-Json` | UTF-16 exports handled. Logons 4624/4625, Kerberos 4771 and NTLM 4776 failures (so AD brute force counts), 4672, 4720, group adds, 1102 log cleared; other IDs kept as `winevent`. Plain PowerShell JSON only lists values by position, so names are applied only to 4624/4625 — add the `Xml` property for full fields |
+| `cef` | CEF from Palo Alto, Fortinet, Check Point, Cisco, Sophos, … (with or without a syslog header) | src/dst/spt/dpt/proto/act/suser mapped; `act=deny/drop/reset…` → `blocked`; firewall products get `source_type: firewall`, other CEF senders `cef`; escaping (`\=`, `\\`, `\|`) handled |
+| `iptables` | Linux netfilter log lines from iptables, nftables or UFW | `[UFW BLOCK]` / `DROP` / `REJECT` prefixes → `blocked`, `ALLOW`/`ACCEPT` → `allowed`; SRC/DST/PROTO/SPT/DPT mapped — the destination port is what the port-scan rule counts |
 | `app` | JSON lines, or a JSON array | Mini SIEM's own field names taken strictly; other tools' names (`src_ip`, `user`, `@timestamp`, epoch `ts`) mapped |
 | `syslog5424` | Syslog, RFC 5424 | sshd messages become ssh login events |
 | `syslog` | Syslog, RFC 3164 / BSD | host, process, pid |
@@ -183,6 +185,10 @@ carefully — this is the pre-deploy regression pass.
 | B22 🔧 | Windows brute force is detected | 11+ failed logons (4625) from one IP within 5 min, uploaded as XML with current timestamps | brute_force alert, T1110 — same rule as SSH, no Windows-specific rule needed |
 | B23 🔧 | Active Directory auth failures | domain-controller export with 4771 (Kerberos pre-auth failed) / 4776 with a non-zero Status | stored as `login_failed`, so brute force / password spray rules see them |
 | B24 🛡️ | Hostile XML | billion-laughs or XXE (`<!DOCTYPE … SYSTEM "file:///etc/passwd">`) uploaded as .xml | returns quickly; `skipped_reasons: {"xml_dtd_forbidden": 1}`; nothing stored, no file read |
+| B25 🔧 | Linux firewall log | upload `/var/log/ufw.log` or `kern.log` (or `tests/fixtures/ufw.log`) | `detected_format: iptables`; rows have `source_type: firewall`, `action: blocked`/`allowed`, source/dest IP, protocol, ports |
+| B26 🔧 | CEF from a firewall appliance | upload a Palo Alto / Fortinet / Check Point CEF syslog export (or `tests/fixtures/cef.log`) | `detected_format: cef`; deny/drop → `blocked`; vendor, product and signature kept in raw; `event_code` = signature id |
+| B27 🔧 | Port scan is detected from firewall logs | 15+ blocked connections to different destination ports from one IP within 5 min, with current timestamps | Port Scan alert, T1046 — the port-scan rule could never fire before firewall logs were ingestible |
+| B28 🛡️ | Hostile CEF / firewall lines | a CEF line with 60,000 `a=` tokens and backslashes; an `IN=` line with a non-IP `SRC` | parses in well under a second; the bad firewall line is not treated as a firewall event |
 
 ### C. Detection — threshold rules (run `POST /api/detect/run` or wait for the 60s scheduler)
 

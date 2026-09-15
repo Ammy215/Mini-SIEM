@@ -23,6 +23,7 @@ _FUTURE_TOLERANCE = timedelta(days=1)
 _YEARS_TO_TRY = 9
 
 _EPOCH_RE = re.compile(r"\d{9,13}(?:\.\d+)?")
+_LONG_FRACTION_RE = re.compile(r"(\.\d{6})\d+")
 
 # March 1973 to the year 3000. Outside that, a number is a counter, a duration
 # or an ID rather than a time: `"time": 12` must not date an event to 1970.
@@ -77,6 +78,8 @@ def parse_flexible(value) -> datetime | None:
         return _from_epoch(float(text))
     if not text or len(text) > 64:
         return None
+    # Windows writes 7 fractional digits and journald 9; Python accepts at most 6.
+    text = _LONG_FRACTION_RE.sub(r"\1", text)
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:

@@ -23,7 +23,7 @@ from typing import Callable
 from pydantic import ValidationError
 
 from models.events import EventIn
-from parsers import app_json, csv_format, generic, kv, nginx, ssh, syslog, syslog5424, winevt
+from parsers import app_json, cef, csv_format, generic, iptables, kv, nginx, ssh, syslog, syslog5424, winevt
 from parsers.base import ParseContext
 from parsers.timeutil import InvalidTimestamp
 
@@ -75,6 +75,16 @@ LINE_FORMATS: tuple[LineFormat, ...] = (
         "app", "JSON",
         "JSON lines or a JSON array; common field names such as src_ip, user and @timestamp are mapped",
         lambda line, ctx: app_json.parse_line(line),
+    ),
+    LineFormat(
+        "cef", "CEF (Palo Alto, Fortinet, Check Point, …)",
+        "CEF:0|vendor|product|version|signature|name|severity|key=value extension, with or without a syslog header",
+        lambda line, ctx: cef.parse_line(line, year_hint=ctx.year_hint),
+    ),
+    LineFormat(
+        "iptables", "Linux firewall (iptables / nftables / UFW)",
+        "Kernel netfilter log lines: [UFW BLOCK] IN=eth0 OUT= SRC=… DST=… PROTO=TCP SPT=… DPT=…",
+        lambda line, ctx: iptables.parse_line(line, year_hint=ctx.year_hint),
     ),
     LineFormat(
         "syslog5424", "Syslog (RFC 5424)",

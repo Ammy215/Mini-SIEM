@@ -93,9 +93,29 @@ def _lowered(obj: dict) -> dict:
     return lowered
 
 
+# IANA protocol numbers, as many firewalls log them (proto=6), mapped to the
+# names netfilter and most tools use — so one `protocol = tcp` filter matches
+# every source.
+_PROTOCOL_NAMES = {
+    "1": "icmp", "2": "igmp", "6": "tcp", "17": "udp", "41": "ipv6", "47": "gre",
+    "50": "esp", "51": "ah", "58": "ipv6-icmp", "89": "ospf", "132": "sctp",
+}
+
+
+def normalize_protocol(value) -> str | None:
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip().lower()
+    if not text or len(text) > MAX_LENGTHS["protocol"]:
+        return None
+    return _PROTOCOL_NAMES.get(text, text)
+
+
 def _coerce(field: str, value):
     if value is None or isinstance(value, bool):
         return None
+    if field == "protocol":
+        return normalize_protocol(value)
     if field in _IP_FIELDS:
         try:
             return str(ipaddress.ip_address(str(value).strip()))

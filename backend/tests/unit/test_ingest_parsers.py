@@ -50,7 +50,7 @@ def test_kv_maps_common_firewall_field_names():
     assert event["source_ip"] == "203.0.113.50"
     assert event["dest_ip"] == "10.0.0.8"
     assert (event["src_port"], event["dest_port"]) == (51515, 22)
-    assert (event["host"], event["action"], event["protocol"]) == ("FGT-HQ", "deny", "6")
+    assert (event["host"], event["action"], event["protocol"]) == ("FGT-HQ", "deny", "tcp")
     assert event["event_time"] == datetime(2026, 9, 14, 10, 1, 2, tzinfo=UTC)
     assert event["raw"]["devname"] == "FGT-HQ"
 

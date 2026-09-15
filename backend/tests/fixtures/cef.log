@@ -1,0 +1,4 @@
+Sep 14 10:30:00 pa-fw01 CEF:0|Palo Alto Networks|PAN-OS|10.1.0|end|TRAFFIC|1|rt=Sep 14 2026 10:30:00 GMT deviceExternalId=0123456789 src=203.0.113.120 dst=10.0.0.20 cs1Label=Rule cs1=deny-inbound suser= duser= app=ms-rdp spt=51000 dpt=3389 proto=tcp act=deny
+<134>Sep 14 10:30:05 fgt01 CEF:0|Fortinet|Fortigate|v7.2.4|0000000013|forward traffic denied|5|start=Sep 14 2026 10:30:05 logid=0000000013 cat=traffic:forward devname=FGT-HQ src=203.0.113.121 spt=51515 dst=10.0.0.8 dpt=22 proto=6 act=deny msg=policy \= deny-all, rule id 7
+CEF:0|Check Point|VPN-1 & FireWall-1|Check Point|Log|Drop|Medium|act=Drop rt=1789381200000 src=198.51.100.33 dst=10.0.0.9 spt=40000 dpt=445 proto=6 suser=CORP\\alice
+CEF:0|Security|threatmanager|1.0|100|worm successfully stopped|10|src=10.0.0.1 dst=2.1.2.2 spt=1232 msg=Detected a threat. No action needed. filePath=C:\\Windows\\temp\\x.exe
