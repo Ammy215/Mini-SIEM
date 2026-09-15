@@ -1,8 +1,11 @@
 # End-to-end smoke test
 
 `smoke.js` walks the whole app in a real browser: login, every core page,
-the Attack Lab (login + search forms, run detection), and a mobile
-responsive check. It's the automated stand-in for the manual Playwright
+the Attack Lab (login + search forms, run detection), uploading a log file on
+the Upload Logs page and opening its events, and a mobile responsive check.
+
+The upload step stores one small real batch (`e2e-smoke-auth.log`, three
+synthetic lines with documentation-range IPs) each time it runs. It's the automated stand-in for the manual Playwright
 verification done throughout Phases 8-10.
 
 This is **not** run in CI — it needs the backend, the frontend dev server,

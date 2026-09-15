@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Button } from "@/components/ui/button";
 import { AiSummary } from "@/components/AiSummary";
+import { LogText } from "@/components/LogText";
 import { cn } from "@/lib/utils";
 import { useAlerts, useSummarizeAlert } from "@/api/hooks";
 
@@ -133,7 +134,8 @@ export default function Alerts() {
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {new Date(alert.created_at).toLocaleString()}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">{alert.title}</TableCell>
+                    {/* Titles can embed log content, e.g. the username in a password-spray alert. */}
+                    <TableCell className="max-w-xs truncate"><LogText value={alert.title} /></TableCell>
                     <TableCell className="font-mono text-xs">{alert.mitre_technique ?? "—"}</TableCell>
                     <TableCell className="font-mono">{alert.source_ip ?? "—"}</TableCell>
                     <TableCell className="font-mono">{alert.threat_score ?? "—"}</TableCell>

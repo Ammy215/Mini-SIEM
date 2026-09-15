@@ -179,3 +179,45 @@ export function useSummarizeIncident() {
     mutationFn: async (incidentId) => (await api.post(`/api/incidents/${incidentId}/summary`)).data,
   });
 }
+
+// Uploading is analyst/admin only — pass enabled=false for viewers so the page
+// doesn't fire requests that would 403.
+export function useIngestFormats(enabled = true) {
+  return useQuery({
+    queryKey: ["ingest", "formats"],
+    queryFn: async () => (await api.get("/api/ingest/formats")).data,
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useUploadBatches(enabled = true, limit = 20) {
+  return useQuery({
+    queryKey: ["ingest", "batches", limit],
+    queryFn: async () => (await api.get("/api/ingest/batches", { params: { limit } })).data,
+    enabled,
+  });
+}
+
+export function useUploadLog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ file, format, year, onProgress }) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("format", format);
+      if (year) form.append("year", String(year));
+      const response = await api.post("/api/logs/upload", form, {
+        onUploadProgress: (event) => {
+          if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100));
+        },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ingest", "batches"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+}

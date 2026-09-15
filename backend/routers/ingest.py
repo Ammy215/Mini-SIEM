@@ -110,7 +110,10 @@ async def ingest(
 
 @router.get("/api/ingest/formats", response_model=FormatListResponse)
 async def list_formats(current_user: CurrentUser = Depends(_can_ingest)):
-    return FormatListResponse(formats=[FormatOut(**fmt) for fmt in pipeline.available_formats()])
+    return FormatListResponse(
+        formats=[FormatOut(**fmt) for fmt in pipeline.available_formats()],
+        max_upload_bytes=settings.max_upload_bytes,
+    )
 
 
 @router.post("/api/logs/upload", response_model=UploadResult, dependencies=[Depends(_ingest_rate_limit)])

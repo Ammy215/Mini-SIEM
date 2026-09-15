@@ -150,6 +150,8 @@ class FormatOut(BaseModel):
 
 class FormatListResponse(BaseModel):
     formats: list[FormatOut]
+    # So the upload page can refuse an oversized file before sending it.
+    max_upload_bytes: int
 
 
 class EventOut(BaseModel):

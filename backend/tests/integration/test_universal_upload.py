@@ -179,6 +179,7 @@ async def test_formats_endpoint_lists_every_upload_format(client, admin):
     assert names == [
         "auto", "ssh", "nginx", "windows", "app", "cef", "iptables", "syslog5424", "syslog", "kv", "csv", "generic",
     ]
+    assert r.json()["max_upload_bytes"] == settings.max_upload_bytes
 
 
 async def test_unknown_format_and_impossible_year_are_rejected(client, admin, batches):

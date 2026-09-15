@@ -17,7 +17,7 @@ const SEARCH_PAYLOADS = [
 function EndpointRow({ method, path }) {
   return (
     <div className="flex items-center gap-2 py-1.5 text-sm border-b border-border last:border-0 font-mono">
-      <span className="text-siem-cyan">{method}</span>
+      <span className="text-cyan">{method}</span>
       <span className="break-all">{API_BASE_URL}{path}</span>
     </div>
   );
@@ -48,7 +48,7 @@ export default function AttackLab() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <FlaskConical className="h-6 w-6 text-siem-amber" />
+        <FlaskConical className="h-6 w-6 text-amber" />
         <h1 className="text-2xl font-bold">Attack Lab</h1>
       </div>
       <p className="text-sm text-muted-foreground max-w-2xl">

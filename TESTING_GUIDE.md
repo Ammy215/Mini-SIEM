@@ -72,7 +72,7 @@ honest current shape.
 
 | Method | Endpoint / UI | Use for |
 |---|---|---|
-| **File upload** | `POST /api/logs/upload` — multipart `file`, optional `format` (default `auto`) and `year`; via curl/Postman or `/docs` until the upload page (Phase 18) | loading any log file up to 10 MB — the format is detected for you |
+| **File upload** | **Upload Logs** page (analyst/admin): drag a file in, optionally pick a format or a year. Or `POST /api/logs/upload` — multipart `file`, optional `format` (default `auto`) and `year` | loading any log file up to 10 MB — the format is detected for you, and each upload is kept in the history |
 | **Direct ingest** | `POST /api/ingest` (one event, or a JSON list of up to 1,000) | scripted/synthetic test bursts, simulating an agent |
 | **Attack Lab** | UI page, `ENABLE_ATTACK_LAB=true` only | generating real attack traffic against your own app (Burp or manual) that the detection engine then catches |
 | **Live traffic** | none yet — a local-only syslog listener is planned (Phase 26) | forwarding logs from real machines as they happen |
@@ -189,6 +189,13 @@ carefully — this is the pre-deploy regression pass.
 | B26 🔧 | CEF from a firewall appliance | upload a Palo Alto / Fortinet / Check Point CEF syslog export (or `tests/fixtures/cef.log`) | `detected_format: cef`; deny/drop → `blocked`; vendor, product and signature kept in raw; `event_code` = signature id |
 | B27 🔧 | Port scan is detected from firewall logs | 15+ blocked connections to different destination ports from one IP within 5 min, with current timestamps | Port Scan alert, T1046 — the port-scan rule could never fire before firewall logs were ingestible |
 | B28 🛡️ | Hostile CEF / firewall lines | a CEF line with 60,000 `a=` tokens and backslashes; an `IN=` line with a non-IP `SRC` | parses in well under a second; the bad firewall line is not treated as a firewall event |
+| B29 🔧 | Upload Logs page | as analyst: sidebar → Upload Logs → drag in `mixed_auth.log` → Upload | progress bar, then a result card: detected format and confidence, lines / stored / skipped, which parsers read the lines |
+| B30 🔧 | Skipped lines are explained | upload `mixed_auth.log` with Format = OpenSSH auth log | result lists "Not in the chosen format" ×3 with line numbers and the line text |
+| B31 🔧 | From an upload to its events | click "View these events" on a result or in Upload history | Events opens filtered to that upload, with a "Show all events" button to clear it |
+| B32 🔧 | Upload history | upload two files, then expand a row in Upload history | each shows time, file, uploader, format, stored/skipped, parser breakdown, event time span and file hash |
+| B33 🔧 | Oversized file in the browser | choose a file over 10 MB | refused on the page before anything is sent, with the size and the limit |
+| B34 🛡️ | Upload page is analyst/admin only | log in as viewer | no Upload Logs in the sidebar; `/upload` says the role is required; the API returns 403 |
+| B35 🛡️ | Hidden text-direction characters are shown, not applied | ingest an event with username `ADVTEST` + U+202E + `gnp.exe`, then open Events | shown as `ADVTEST[U+202E]gnp.exe`, highlighted amber with a tooltip — not as the spoofed `ADVTESTexe.png` (was FUTURE_UPGRADES §4.8) |
 
 ### C. Detection — threshold rules (run `POST /api/detect/run` or wait for the 60s scheduler)
 
@@ -290,7 +297,7 @@ carefully — this is the pre-deploy regression pass.
 
 | # | Case | Expected |
 |---|---|---|
-| L1 🛡️ | Bidi override spoofing | username `ADVTEST\u202Egnp.exe` | stored intact, **known cosmetic limitation** — displays reversed in the Events table (§4.8 FUTURE_UPGRADES.md); not a security hole, just note it's still open |
+| L1 🛡️ | Bidi override spoofing | ingest a username of `ADVTEST` + U+202E + `gnp.exe` | stored intact; shown as `ADVTEST[U+202E]gnp.exe`, highlighted amber with a tooltip — never as the spoofed `ADVTESTexe.png` (fixed in Phase 18, see B35) |
 | L2 🛡️ | UUID path param fuzzing | garbage string where a user UUID is expected | 422, not 500 |
 | L3 🛡️ | SQL injection in the app's own query params | try to inject into a real search/filter field (not a log field — the app's own SQL) | fails cleanly — everything is parameterized, confirm no raw string interpolation anywhere in `routers/` |
 | L4 🛡️ | Setup/validate access | `GET /api/setup/validate` as non-admin | 403 (fixed — was previously public) |

@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { AiSummary } from "@/components/AiSummary";
+import { LogText } from "@/components/LogText";
 import { useIncidents, useIncident, useSummarizeIncident } from "@/api/hooks";
 
 function IncidentAlerts({ incidentId }) {
@@ -15,7 +16,7 @@ function IncidentAlerts({ incidentId }) {
         <div key={alert.id} className="flex items-center justify-between text-sm py-1">
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs text-muted-foreground">{alert.mitre_technique ?? "—"}</span>
-            <span>{alert.title}</span>
+            <LogText value={alert.title} />
           </div>
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs text-muted-foreground">{alert.threat_score}</span>
@@ -75,7 +76,7 @@ export default function Incidents() {
                     <TableCell>
                       {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">{incident.title}</TableCell>
+                    <TableCell className="max-w-xs truncate"><LogText value={incident.title} /></TableCell>
                     <TableCell className="font-mono">{incident.source_ip ?? "—"}</TableCell>
                     <TableCell className="font-mono">{incident.alert_count}</TableCell>
                     <TableCell><SeverityBadge severity={incident.severity} /></TableCell>

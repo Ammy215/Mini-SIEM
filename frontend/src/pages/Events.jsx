@@ -1,13 +1,23 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { LogText } from "@/components/LogText";
 import { useEvents } from "@/api/hooks";
 
-const SOURCE_TYPES = ["", "ssh", "nginx", "syslog", "app"];
+const SOURCE_TYPES = ["", "ssh", "nginx", "windows", "firewall", "cef", "syslog", "app", "kv", "csv", "generic"];
 const PAGE_SIZE = 25;
 
+function destination(event) {
+  if (!event.dest_ip && event.dest_port == null) return null;
+  return `${event.dest_ip ?? "?"}${event.dest_port != null ? `:${event.dest_port}` : ""}`;
+}
+
 export default function Events() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const batchId = searchParams.get("batch_id") ?? "";
   const [sourceType, setSourceType] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
@@ -15,6 +25,7 @@ export default function Events() {
   const { data, isLoading } = useEvents({
     ...(sourceType && { source_type: sourceType }),
     ...(q && { q }),
+    ...(batchId && { batch_id: batchId }),
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
@@ -25,6 +36,25 @@ export default function Events() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Events</h1>
+
+      {batchId && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">
+          <span>
+            Showing events from one upload <span className="font-mono text-xs text-muted-foreground">{batchId}</span>
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setPage(0);
+              setSearchParams({});
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+            Show all events
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 items-center">
         <select
@@ -59,7 +89,9 @@ export default function Events() {
             <TableRow>
               <TableHead>Time</TableHead>
               <TableHead>Source</TableHead>
+              <TableHead>Host</TableHead>
               <TableHead>Source IP</TableHead>
+              <TableHead>Destination</TableHead>
               <TableHead>Action</TableHead>
               <TableHead>Username</TableHead>
               <TableHead>URL</TableHead>
@@ -68,14 +100,14 @@ export default function Events() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && events.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   No events found.
                 </TableCell>
               </TableRow>
@@ -86,10 +118,20 @@ export default function Events() {
                   {new Date(event.event_time).toLocaleString()}
                 </TableCell>
                 <TableCell>{event.source_type}</TableCell>
+                <TableCell className="max-w-[10rem] truncate text-xs">
+                  <LogText value={event.host} />
+                </TableCell>
                 <TableCell className="font-mono">{event.source_ip ?? "—"}</TableCell>
-                <TableCell>{event.action ?? "—"}</TableCell>
-                <TableCell>{event.username ?? "—"}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs">{event.url ?? "—"}</TableCell>
+                <TableCell className="font-mono text-xs whitespace-nowrap">{destination(event) ?? "—"}</TableCell>
+                <TableCell>
+                  <LogText value={event.action} />
+                </TableCell>
+                <TableCell>
+                  <LogText value={event.username} />
+                </TableCell>
+                <TableCell className="max-w-xs truncate font-mono text-xs">
+                  <LogText value={event.url} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -3,6 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Activity, ShieldAlert, FolderOpen, Clock, Radio } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SeverityBadge } from "@/components/ui/severity-badge";
+import { LogText } from "@/components/LogText";
 import { useDashboardStats, useTimeline, useTopAttackers, useAlerts, useEvents } from "@/api/hooks";
 
 function StatCard({ label, value, icon: Icon, index }) {
@@ -13,7 +14,7 @@ function StatCard({ label, value, icon: Icon, index }) {
       transition={{ delay: index * 0.05, duration: 0.3 }}
       whileHover={{ y: -2 }}
     >
-      <Card className="transition-colors hover:border-primary/40">
+      <Card className="py-0 transition-colors hover:border-primary/40">
         <CardContent className="flex items-center justify-between p-5">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</p>
@@ -184,7 +185,7 @@ export default function Dashboard() {
             {(recentAlerts?.alerts ?? []).map((alert) => (
               <div key={alert.id} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
                 <div className="truncate pr-3">
-                  <p className="truncate">{alert.title}</p>
+                  <p className="truncate"><LogText value={alert.title} /></p>
                   <p className="text-xs text-muted-foreground font-mono">{alert.mitre_technique}</p>
                 </div>
                 <SeverityBadge severity={alert.severity} />
@@ -211,9 +212,11 @@ export default function Dashboard() {
               <span className="font-mono text-muted-foreground whitespace-nowrap">
                 {new Date(event.event_time).toLocaleTimeString()}
               </span>
-              <span className="uppercase text-muted-foreground w-14 shrink-0">{event.source_type}</span>
+              <span className="uppercase text-muted-foreground w-16 shrink-0">{event.source_type}</span>
               <span className="font-mono">{event.source_ip ?? "—"}</span>
-              <span className="text-muted-foreground truncate">{event.action ?? ""}</span>
+              <span className="text-muted-foreground truncate">
+                <LogText value={event.action} fallback="" />
+              </span>
             </div>
           ))}
         </CardContent>

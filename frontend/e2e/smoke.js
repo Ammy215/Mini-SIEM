@@ -86,7 +86,40 @@ async function main() {
     console.log("  skip Attack Lab is not enabled (ENABLE_ATTACK_LAB=false) — nothing to test here");
   }
 
-  console.log("4. Mobile responsive check");
+  console.log("4. Upload a log file");
+  // A small synthetic auth.log built in memory: sshd lines mixed with other
+  // syslog, so the page has to detect the format and keep the login fields.
+  // It is stored like any upload, as one small batch named e2e-smoke-auth.log.
+  const now = new Date();
+  const stamp = (offsetSeconds) =>
+    new Date(now.getTime() - offsetSeconds * 1000)
+      .toUTCString()
+      .replace(/^\w+, (\d+) (\w+) \d+ ([\d:]+) GMT$/, (_, day, month, time) => `${month} ${day.padStart(2, " ")} ${time}`);
+  const authLog = [
+    `${stamp(30)} e2e-host sshd[100]: Failed password for root from 203.0.113.250 port 40000 ssh2`,
+    `${stamp(20)} e2e-host CRON[200]: pam_unix(cron:session): session opened for user root by (uid=0)`,
+    `${stamp(10)} e2e-host sshd[101]: Accepted publickey for deploy from 192.0.2.250 port 40001 ssh2`,
+  ].join("\n");
+
+  await page.goto(`${FRONTEND_URL}/upload`, { waitUntil: "networkidle" });
+  await page.waitForSelector('h1:has-text("Upload Logs")', { timeout: 10000 });
+  await page.setInputFiles("#log-file", {
+    name: "e2e-smoke-auth.log",
+    mimeType: "text/plain",
+    buffer: Buffer.from(authLog),
+  });
+  await page.click('button:has-text("Upload")');
+  await page.waitForSelector("text=Uploaded", { timeout: 20000 });
+  check("upload result card appears", true);
+  // Read the result card's "Detected as …" line itself: the same label also
+  // exists as a hidden <option> in the format dropdown.
+  const detectedLine = await page.locator('p:has-text("Detected as")').first().textContent();
+  check("classic syslog is detected", detectedLine?.includes("Syslog (RFC 3164 / BSD)"));
+  await page.click('a:has-text("View these events")');
+  await page.waitForSelector("text=Showing events from one upload", { timeout: 10000 });
+  check("'View these events' opens Events filtered to the upload", true);
+
+  console.log("5. Mobile responsive check");
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto(FRONTEND_URL, { waitUntil: "networkidle" });
   await page.waitForSelector('h1:has-text("Dashboard")', { timeout: 10000 });

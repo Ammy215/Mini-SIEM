@@ -210,7 +210,14 @@ What remains: a year-less log **more than a year old** still gets a recent
 year, because the line itself carries no way to tell. A per-upload year hint
 closes that (planned with the upload UI).
 
-### 4.8 Unicode bidi overrides can spoof text in the UI
+### 4.8 ~~Unicode bidi overrides can spoof text in the UI~~ — fixed in Phase 18
+
+**Fixed:** log-derived text now renders through `frontend/src/components/LogText.jsx`,
+which shows each bidi control character (U+202A–U+202E, U+2066–U+2069) as a
+visible `[U+202E]` marker, highlighted with an explanatory tooltip, instead of
+letting it reorder the text. It is used on Events, Alerts, Incidents, the
+Dashboard's recent alerts and live feed, and the Upload page. The stored value
+is unchanged. The original finding is kept below for the record.
 
 Log content is stored verbatim and rendered by React as escaped text, which is
 correct and safe — no XSS. But *escaped* is not the same as *unambiguous*: a
@@ -252,3 +259,17 @@ What remains: a sufficiently crafted payload can still skew the model's wording
 or assessment — no prompt defence is complete. Summaries are labelled
 AI-generated and must be checked against the evidence shown beside them; they are
 never used to change severity, status, or any detection outcome.
+
+### 4.10 shadcn components were generated for Tailwind 4; the project runs Tailwind 3
+
+`frontend/components.json` uses the `radix-nova` style, whose components are
+written in Tailwind 4 syntax (`px-(--card-spacing)`, `in-data-[…]:`,
+`rounded-4xl`). Under Tailwind 3.4 those classes compile to nothing, silently.
+Every Card lost its inner padding this way, on every page, until Phase 18
+rewrote `card.jsx` and `badge.jsx` in Tailwind 3 classes.
+
+Still written in Tailwind 4 syntax but harmless today: `select.jsx` (imported by
+no page — the app uses native `<select>`) and the button-group / icon-slot
+variants in `button.jsx` (no button groups exist). Any shadcn component added
+later needs the same check, or the project should move to Tailwind 4 as a
+deliberate upgrade.

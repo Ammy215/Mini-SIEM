@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   FlaskConical,
+  Upload,
 } from "lucide-react";
 import { useAuth } from "@/api/AuthContext";
 import { useSetupValidate } from "@/api/hooks";
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings", icon: SlidersHorizontal },
 ];
 
+const UPLOAD_ITEM = { to: "/upload", label: "Upload Logs", icon: Upload };
 const ADMIN_ITEM = { to: "/admin", label: "Admin", icon: Users };
 const ATTACK_LAB_ITEM = { to: "/attack-lab", label: "Attack Lab", icon: FlaskConical };
 
@@ -84,12 +86,16 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const isAdmin = user?.roles?.includes("admin");
+  const canUpload = isAdmin || user?.roles?.includes("analyst");
   // /api/setup/validate is admin-only, so the Attack Lab nav item is only
   // discoverable by admins now. Acceptable: it's a dev-only feature and the
   // routes themselves stay gated by ENABLE_ATTACK_LAB regardless of role.
   const { data: validate } = useSetupValidate(isAdmin);
-  let navItems = validate?.attack_lab_enabled ? [...NAV_ITEMS, ATTACK_LAB_ITEM] : NAV_ITEMS;
-  if (isAdmin) navItems = [...navItems, ADMIN_ITEM];
+
+  const navItems = [...NAV_ITEMS];
+  if (canUpload) navItems.splice(2, 0, UPLOAD_ITEM); // right after Events
+  if (validate?.attack_lab_enabled) navItems.push(ATTACK_LAB_ITEM);
+  if (isAdmin) navItems.push(ADMIN_ITEM);
   const currentLabel = navItems.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label;
 
   return (

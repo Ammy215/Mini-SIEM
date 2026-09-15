@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Events from "@/pages/Events";
+import Upload from "@/pages/Upload";
 import Alerts from "@/pages/Alerts";
 import Incidents from "@/pages/Incidents";
 import Rules from "@/pages/Rules";
@@ -50,6 +51,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/events" element={<Events />} />
+        <Route path="/upload" element={<Upload />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/incidents" element={<Incidents />} />
         <Route path="/rules" element={<Rules />} />
