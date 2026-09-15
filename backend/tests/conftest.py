@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["HOME_COUNTRIES"] = ""
 os.environ["BUSINESS_HOURS"] = ""
 os.environ["ENABLE_GEO_LOOKUPS"] = "false"
+os.environ["ENABLE_SYSLOG_LISTENER"] = "false"
 
 from database import connect, disconnect  # noqa: E402
 from detection import engine  # noqa: E402

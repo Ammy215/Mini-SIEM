@@ -246,6 +246,19 @@ def parse_text(text: str, requested: str, ctx: ParseContext) -> ParseReport:
     return report
 
 
+def parse_lines(lines: list[str], ctx: ParseContext) -> ParseReport:
+    """Reads each line on its own, trying every line format and falling back to
+    the catch-all, with no whole-file detection: for lines that arrive one at a
+    time, like a syslog stream. Like auto mode, it never drops a line."""
+    report = ParseReport("auto", "stream", None)
+    for line_no, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        report.total_lines += 1
+        _parse_line_auto(report, line_no, line, ctx)
+    return report
+
+
 def _parse_windows_xml(text: str, requested: str) -> ParseReport | None:
     """None when the XML isn't Windows event XML, so line parsing takes over."""
     report = ParseReport(requested, "windows", 1.0 if requested == "auto" else None)

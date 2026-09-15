@@ -12,6 +12,7 @@ from config import settings
 from database import connect, disconnect
 from detection import context, engine
 from detection.scheduler import run_scheduler_loop
+from ingest_listener import syslog_server
 from middleware.body_size_limit import BodySizeLimitMiddleware
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
@@ -34,6 +35,12 @@ async def lifespan(app: FastAPI):
         await engine.seed_all(conn)
         await engine.requeue_interrupted_batches(conn)
 
+    # None unless ENABLE_SYSLOG_LISTENER=true; unsafe listener settings stop startup here.
+    listener = syslog_server.from_settings(pool, settings)
+    if listener is not None:
+        await listener.start()
+    app.state.syslog_listener = listener
+
     scheduler_task = asyncio.create_task(run_scheduler_loop(pool, settings.detection_interval_seconds))
 
     yield
@@ -41,6 +48,8 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
+    if listener is not None:
+        await listener.stop()
     await disconnect()
 
 

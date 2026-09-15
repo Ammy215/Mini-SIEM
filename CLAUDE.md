@@ -525,9 +525,13 @@ GET    /api/incidents/{id}
 GET    /api/enrich/ip/{ip}
 
 # dashboard
+# all stats endpoints take ?range=1h|24h|7d|30d or ?from=&to= (≤90 days, with time zone)
 GET    /api/stats/dashboard
-GET    /api/stats/timeline
+GET    /api/stats/timeline      ← filled buckets: 5 min / 1 h / 1 day by span
 GET    /api/stats/top-attackers
+GET    /api/stats/breakdown     ← logins ok/failed, events by source, alerts by severity, top actions
+GET    /api/stats/mitre         ← ATT&CK techniques by tactic: alerts in range + enabled rules
+GET    /api/stats/geo           ← ?metric=alerts|events: counts per source country (ip_geo), for the attack map
 
 # admin
 GET    /api/admin/users
@@ -535,6 +539,7 @@ POST   /api/admin/users
 PUT    /api/admin/users/{id}
 POST   /api/admin/users/{id}/suspend
 GET    /api/admin/audit
+GET    /api/admin/listener      ← live syslog listener status + counters (off by default)
 
 # system
 GET    /api/health

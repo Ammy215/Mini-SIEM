@@ -401,6 +401,67 @@ logs are still analysed — over their own dates.
 | S10 🔧 | Restart mid-analysis | stop the backend while an upload shows **Analyzing…**; start it again | the upload is queued again and completes |
 | S11 🔧 | Alerts filter | `GET /api/alerts?origin=batch` or `?batch_id=…` | only alerts from upload analysis / that upload |
 
+### T. Dashboard analytics and Events filters (Phase 24)
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| T1 🔧 | Time range picker | Dashboard → 1h / 24h / 7d / 30d | every card updates; the URL gains `?range=…`, so reloading or sharing keeps the view |
+| T2 🔧 | Custom range | **Custom** → pick a from and to (e.g. the dates of an uploaded old log) → Apply | charts cover exactly that span; the end before the start, or more than 90 days, is refused in the picker |
+| T3 🔧 | Timeline buckets | 1h → 5-minute points; 24h / 7d → hourly; 30d → daily | empty periods show as zero, not gaps |
+| T4 🔧 | Logins donut | range with SSH or Windows logons | failed vs successful counts match `/api/events?action=login_failed` / `login_success` for the same range |
+| T5 🔧 | Events by source | range with several log types | one slice per source type (small ones folded into "other"), percentages add to 100 |
+| T6 🔧 | Alerts by severity | range with alerts | slices by severity, placed by when the attack happened (an uploaded old log's alerts appear in its own dates) |
+| T7 🔧 | MITRE ATT&CK matrix | 24h, then 30d | tactics left to right in ATT&CK order; techniques with alerts in the range are red with a count; ones only covered by enabled rules are outlined; ones with no enabled rule are dimmed; switching a rule off updates its technique |
+| T8 🔧 | Top attackers follow the range | pick a range with no alerts | "No attacker activity in this range" |
+| T9 🔧 | Events filters | Events → **Filters** → from/to, username, host (any case), event code, destination port, country | results narrow accordingly; the Filters button shows how many are active; **Clear** resets them |
+| T10 🔧 | Country from IP location | an event whose source IP has a cached location | the country code shows next to the IP, and the country filter finds it |
+| T11 🛡️ | Bad ranges and filters | `?range=2y`, only `from`, `to` before `from`, 91 days, a time without zone, `country=usa`, `dest_port=70000` | 422 each, never 500 |
+
+### U. Attack map (Phase 25)
+
+The map shows where source IPs are, from the location cache that Phase 21's
+background lookups fill (`ENABLE_GEO_LOOKUPS=true`). Only public IPs are ever
+located.
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| U1 🔧 | Map renders | Dashboard → **Attack origins** | world map with country outlines loads (a moment after the rest of the page — it's loaded separately); no requests to any map CDN in the Network tab |
+| U2 🔧 | Alerts by country | ingest attacks from a few public IPs in different countries, Run detection, wait a minute for locations | those countries are shaded red by volume; a bubble on each is sized by count and coloured by the worst severity; the list on the right shows the same counts |
+| U3 🔧 | Events view | toggle **Events** | shading switches to cyan and counts all events from located IPs |
+| U4 🔧 | Hover | hover a shaded country or a list row | tooltip with the country name, code, count and worst severity |
+| U5 🔧 | Private IPs | activity only from `10.x`, `192.168.x`, `127.0.0.1` | nothing on the map, and they don't count as "no known location" |
+| U6 🔧 | Not yet located | ingest from a new public IP and look before the next detection tick | the note under the map says N from IPs with no known location yet; after a tick it's placed |
+| U7 🔧 | Small countries | activity from Singapore, Malta or Hong Kong | listed with "(too small for the map)" rather than silently missing |
+| U8 🔧 | Follows the time range | switch 24h → 30d → a custom range | map and list change with it |
+| U9 🛡️ | Bad input | `GET /api/stats/geo?metric=users` | 422 |
+
+### V. Live syslog listener (Phase 26) — local lab only
+
+Enable in `backend/.env`: `ENABLE_SYSLOG_LISTENER=true`,
+`SYSLOG_ALLOWED_SOURCES=127.0.0.1/32` (add your LAN range, e.g.
+`192.168.1.0/24`, to accept other machines), and to reach it from the LAN
+`SYSLOG_HOST` = this machine's LAN address. Port 5514, UDP and TCP.
+Send a test message from PowerShell:
+
+```powershell
+$u = New-Object System.Net.Sockets.UdpClient
+$b = [Text.Encoding]::UTF8.GetBytes("<38>$(Get-Date -Format 'MMM d HH:mm:ss') lab sshd[1]: Failed password for root from 203.0.113.9 port 22 ssh2")
+$u.Send($b, $b.Length, "127.0.0.1", 5514); $u.Close()
+```
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| V1 🛡️ | Off by default | start normally; `GET /api/admin/listener` as admin | `{"enabled": false}`; nothing listens on 5514 |
+| V2 🛡️ | Won't start unsafely | enable with no `SYSLOG_ALLOWED_SOURCES`; or `APP_ENV=production` with `SYSLOG_HOST=0.0.0.0` | backend refuses to start and names the setting |
+| V3 🔧 | UDP message | send the snippet above | within about a second the event is in Events (ssh `login_failed`, host `lab`); `GET /api/admin/listener` shows `stored` going up |
+| V4 🔧 | TCP, both framings | send a newline-terminated line and an octet-counted RFC 5424 message (`57 <34>1 …`) over TCP | each stored once, parsed as syslog / syslog5424 |
+| V5 🛡️ | Sender not allowed | send from a machine outside the allowlist | nothing stored; `not_allowed` counts it; a TCP connection is closed at once |
+| V6 🛡️ | Oversize | UDP datagram over 8 KB; TCP message over 64 KB | dropped, `oversize` counts it, the TCP connection is closed |
+| V7 🛡️ | Flood | send more than `SYSLOG_BURST` messages in a second from one sender | the excess is dropped and counted in `rate_limited`; the app stays responsive |
+| V8 🔧 | Detection on streamed logs | send 11 failed SSH logins from one IP within 5 minutes | the brute-force alert fires on the next detection tick, like any ingested logs |
+| V9 🛡️ | Production | Render environment | `ENABLE_SYSLOG_LISTENER` unset or false (a free web service can't receive syslog anyway) |
+| V10 🛡️ | Non-admin | `GET /api/admin/listener` as analyst | 403 |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist

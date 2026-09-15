@@ -48,6 +48,12 @@ async function main() {
   await page.click('button[type="submit"]');
   await page.waitForSelector('h1:has-text("Dashboard")', { timeout: 10000 });
   check("dashboard loads after login", await page.locator('h1:has-text("Dashboard")').isVisible());
+  await page.waitForSelector('svg[aria-label^="Attack map"]', { timeout: 15000 });
+  check("attack map renders", (await page.locator('svg[aria-label^="Attack map"] path').count()) > 150);
+  await page.click('button:has-text("7d")');
+  await page.waitForURL(/range=7d/, { timeout: 5000 });
+  check("time range picker updates the URL", true);
+  check("MITRE ATT&CK matrix renders", await page.locator("text=MITRE ATT&CK coverage").isVisible());
 
   console.log("2. Core pages load");
   for (const [path, marker] of [

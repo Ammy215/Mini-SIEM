@@ -1,27 +1,52 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
-export function useDashboardStats() {
+// `range` is { range: "24h" } or { from, to } (see components/TimeRangePicker).
+export function useDashboardStats(range = {}) {
   return useQuery({
-    queryKey: ["stats", "dashboard"],
-    queryFn: async () => (await api.get("/api/stats/dashboard")).data,
+    queryKey: ["stats", "dashboard", range],
+    queryFn: async () => (await api.get("/api/stats/dashboard", { params: range })).data,
     refetchInterval: 10000,
   });
 }
 
-export function useTimeline(hours = 24) {
+export function useTimeline(range = {}) {
   return useQuery({
-    queryKey: ["stats", "timeline", hours],
-    queryFn: async () => (await api.get("/api/stats/timeline", { params: { hours } })).data,
+    queryKey: ["stats", "timeline", range],
+    queryFn: async () => (await api.get("/api/stats/timeline", { params: range })).data,
     refetchInterval: 30000,
   });
 }
 
-export function useTopAttackers(limit = 10) {
+export function useTopAttackers(limit = 10, range = {}) {
   return useQuery({
-    queryKey: ["stats", "top-attackers", limit],
-    queryFn: async () => (await api.get("/api/stats/top-attackers", { params: { limit } })).data,
+    queryKey: ["stats", "top-attackers", limit, range],
+    queryFn: async () => (await api.get("/api/stats/top-attackers", { params: { limit, ...range } })).data,
     refetchInterval: 30000,
+  });
+}
+
+export function useBreakdown(range = {}) {
+  return useQuery({
+    queryKey: ["stats", "breakdown", range],
+    queryFn: async () => (await api.get("/api/stats/breakdown", { params: range })).data,
+    refetchInterval: 30000,
+  });
+}
+
+export function useGeoStats(metric = "alerts", range = {}) {
+  return useQuery({
+    queryKey: ["stats", "geo", metric, range],
+    queryFn: async () => (await api.get("/api/stats/geo", { params: { metric, ...range } })).data,
+    refetchInterval: 60000,
+  });
+}
+
+export function useMitreCoverage(range = {}) {
+  return useQuery({
+    queryKey: ["stats", "mitre", range],
+    queryFn: async () => (await api.get("/api/stats/mitre", { params: range })).data,
+    refetchInterval: 60000,
   });
 }
 

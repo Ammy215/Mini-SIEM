@@ -10,6 +10,7 @@ import { ConditionGroup } from "@/components/rules/ConditionBuilder";
 import { apiErrorMessage } from "@/lib/errors";
 import { RULE_TYPES, definitionFromForm, formFromDefinition } from "@/lib/ruleDefinition";
 import { cn } from "@/lib/utils";
+import { COLORS, tint } from "@/lib/colors";
 import {
   useCreateRule, useDeleteRule, usePreviewRule, useResetRule, useRuleMeta, useUpdateRule,
 } from "@/api/hooks";
@@ -58,8 +59,9 @@ function Builder({ form, setForm, meta, isNew }) {
               onClick={() => set({ type: t.value })}
               className={cn(
                 "rounded-md border p-2 text-left text-xs transition-colors disabled:cursor-not-allowed",
-                form.type === t.value ? "border-cyan bg-cyan/10" : "border-border hover:bg-muted/40 disabled:opacity-50",
+                form.type === t.value ? "border-cyan" : "border-border hover:bg-muted/40 disabled:opacity-50",
               )}
+              style={form.type === t.value ? { background: tint(COLORS.cyan, 10) } : undefined}
             >
               <p className="font-semibold text-sm">{t.label}</p>
               <p className="text-muted-foreground">{t.hint}</p>

@@ -1,6 +1,5 @@
 import hashlib
 import json
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
@@ -11,6 +10,7 @@ from auth.rate_limit import rate_limit
 from auth.rbac import require_role
 from config import settings
 from database import get_pool
+from ingest_service import insert_events
 from middleware.body_size_limit import human_size
 from models.events import (
     BatchListResponse, BatchOut, EventIn, FormatListResponse, FormatOut, IngestResult, SkippedSample, UploadResult,
@@ -24,55 +24,12 @@ _ingest_rate_limit = rate_limit("ingest", limit=60, window_minutes=1)
 _can_ingest = require_role("analyst", "admin")
 
 MAX_EVENTS_PER_REQUEST = 1000
-_INSERT_CHUNK = 1000
-
-_INSERT_SQL = """
-    INSERT INTO events (
-        event_time, source_type, source_ip, dest_ip, dest_port, username, action, status_code,
-        method, url, user_agent, country, raw_message, raw,
-        host, event_code, outcome, protocol, src_port, parser, batch_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb,
-              $15, $16, $17, $18, $19, $20, $21)
-"""
 
 _BATCH_SELECT = """
     SELECT b.*, u.email AS uploaded_by
     FROM ingest_batches b
     LEFT JOIN users u ON u.id = b.created_by
 """
-
-
-def _event_to_row(event: dict, batch_id: UUID | None) -> tuple:
-    return (
-        event.get("event_time") or datetime.now(timezone.utc),
-        event["source_type"],
-        event.get("source_ip"),
-        event.get("dest_ip"),
-        event.get("dest_port"),
-        event.get("username"),
-        event.get("action"),
-        event.get("status_code"),
-        event.get("method"),
-        event.get("url"),
-        event.get("user_agent"),
-        event.get("country"),
-        event.get("raw_message"),
-        json.dumps(event["raw"]) if event.get("raw") is not None else None,
-        event.get("host"),
-        event.get("event_code"),
-        event.get("outcome"),
-        event.get("protocol"),
-        event.get("src_port"),
-        event.get("parser"),
-        batch_id,
-    )
-
-
-async def _insert_events(conn, events: list[dict], batch_id: UUID | None = None) -> int:
-    rows = [_event_to_row(event, batch_id) for event in events]
-    for start in range(0, len(rows), _INSERT_CHUNK):
-        await conn.executemany(_INSERT_SQL, rows[start:start + _INSERT_CHUNK])
-    return len(rows)
 
 
 def _row_to_batch(row) -> BatchOut:
@@ -107,7 +64,7 @@ async def ingest(
     rows = [{**event.model_dump(), "parser": "api"} for event in events]
     pool = get_pool()
     async with pool.acquire() as conn:
-        inserted = await _insert_events(conn, rows)
+        inserted = await insert_events(conn, rows)
 
     return IngestResult(ingested=inserted)
 
@@ -182,7 +139,7 @@ async def upload_log(
                 json.dumps(report.by_parser), json.dumps(report.skipped_reasons), json.dumps(report.skipped_samples),
                 min(event_times, default=None), max(event_times, default=None), detection_status,
             )
-            inserted = await _insert_events(conn, report.events, batch_id)
+            inserted = await insert_events(conn, report.events, batch_id)
             await log_action(
                 conn, user_id=current_user.id, action="logs_uploaded",
                 detail={

@@ -212,3 +212,13 @@ async def get_audit_log(
         for r in rows
     ]
     return AuditLogResponse(entries=entries, total=total)
+
+
+@router.get("/api/admin/listener")
+async def listener_status(request: Request, current_user: CurrentUser = Depends(require_role("admin"))):
+    """The live syslog listener's settings and counters. It's off unless
+    ENABLE_SYSLOG_LISTENER=true, and then only accepts SYSLOG_ALLOWED_SOURCES."""
+    listener = getattr(request.app.state, "syslog_listener", None)
+    if listener is None:
+        return {"enabled": False}
+    return {"enabled": True, **listener.describe()}

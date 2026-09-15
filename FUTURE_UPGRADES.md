@@ -273,3 +273,18 @@ no page — the app uses native `<select>`) and the button-group / icon-slot
 variants in `button.jsx` (no button groups exist). Any shadcn component added
 later needs the same check, or the project should move to Tailwind 4 as a
 deliberate upgrade.
+
+### 4.11 The live syslog listener trusts the network it runs on
+
+Syslog (RFC 3164/5424) has no authentication, and a UDP packet's source address
+can be forged. The listener added in Phase 26 limits the damage — it's off by
+default, binds loopback unless told otherwise, refuses to listen on every
+interface in production, accepts only `SYSLOG_ALLOWED_SOURCES`, and rate-limits
+and size-caps each sender — but anyone who can put packets on an allowed
+network can still inject fake events, and so fake or hide alerts.
+
+That makes it a local-lab feature, not an internet-facing one. The real fix is
+syslog over TLS with client certificates (RFC 5425) or an agent that
+authenticates to the ingest API; both are deferred. A hosted deployment on
+Render's free tier can't receive syslog at all, so production keeps
+`ENABLE_SYSLOG_LISTENER` unset.

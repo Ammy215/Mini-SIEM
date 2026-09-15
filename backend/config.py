@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     # Background country lookups for event source IPs (ipinfo, capped per tick).
     enable_geo_lookups: bool = True
 
+    # Live syslog listener — for a local lab only, off by default
+    # (ingest_listener/syslog_server.py). It won't start without an allowlist.
+    enable_syslog_listener: bool = False
+    syslog_host: str = "127.0.0.1"
+    syslog_port: int = 5514
+    syslog_allowed_sources: str = ""  # comma-separated IPs / CIDR ranges
+    syslog_rate_per_second: int = 200
+    syslog_burst: int = 1000
+
     # Also enforced on the raw request body before it is read (middleware/body_size_limit.py).
     max_upload_bytes: int = 10 * 1024 * 1024
     max_ingest_body_bytes: int = 5 * 1024 * 1024
