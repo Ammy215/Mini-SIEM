@@ -1,0 +1,6 @@
+Sep 14 09:00:01 bastion sshd[2201]: Failed password for root from 198.51.100.23 port 40111 ssh2
+Sep 14 09:00:02 bastion sshd[2201]: Failed password for invalid user oracle from 198.51.100.23 port 40112 ssh2
+Sep 14 09:00:05 bastion CRON[3310]: pam_unix(cron:session): session opened for user root by (uid=0)
+Sep 14 09:00:07 bastion sshd[2202]: Accepted publickey for deploy from 192.0.2.44 port 51820 ssh2: ED25519 SHA256:x
+Sep 14 09:00:09 bastion systemd[1]: Started Session 12 of user deploy.
+Sep 14 09:00:11 bastion sudo[3321]:   deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/apt update

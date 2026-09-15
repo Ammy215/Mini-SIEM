@@ -8,7 +8,8 @@ from parsers.timeutil import InvalidTimestamp
 _LINE_RE = re.compile(
     r'^(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<url>\S+) \S+" '
-    r'(?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"'
+    # Apache writes "-" instead of 0 when no body was sent.
+    r'(?P<status>\d+) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"'
 )
 
 
@@ -58,7 +59,7 @@ def parse_line(line: str) -> dict | None:
         "user_agent": match["ua"],
         "raw_message": line.strip(),
         "raw": {
-            "bytes_sent": int(match["bytes"]),
+            "bytes_sent": 0 if match["bytes"] == "-" else int(match["bytes"]),
             "referer": match["referer"],
             "url_raw": raw_url,
             "url_was_encoded": raw_url != decoded_url,

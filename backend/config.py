@@ -28,5 +28,9 @@ class Settings(BaseSettings):
 
     detection_interval_seconds: int = 60
 
+    # Also enforced on the raw request body before it is read (middleware/body_size_limit.py).
+    max_upload_bytes: int = 10 * 1024 * 1024
+    max_ingest_body_bytes: int = 5 * 1024 * 1024
+
 
 settings = Settings()

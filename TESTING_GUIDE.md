@@ -72,23 +72,35 @@ honest current shape.
 
 | Method | Endpoint / UI | Use for |
 |---|---|---|
-| **File upload** | UI: none dedicated yet — `POST /api/logs/upload` (multipart file) via curl/Postman, or `/docs` | bulk-loading a real sample log (ssh/nginx/syslog/app-json) |
-| **Direct ingest** | `POST /api/ingest` (single event or batch JSON body) | scripted/synthetic test bursts, simulating an agent |
+| **File upload** | `POST /api/logs/upload` — multipart `file`, optional `format` (default `auto`) and `year`; via curl/Postman or `/docs` until the upload page (Phase 18) | loading any log file up to 10 MB — the format is detected for you |
+| **Direct ingest** | `POST /api/ingest` (one event, or a JSON list of up to 1,000) | scripted/synthetic test bursts, simulating an agent |
 | **Attack Lab** | UI page, `ENABLE_ATTACK_LAB=true` only | generating real attack traffic against your own app (Burp or manual) that the detection engine then catches |
-| **Live traffic** | none — this app doesn't tail a real production log source in v1 | not applicable; out of scope for a portfolio SIEM |
+| **Live traffic** | none yet — a local-only syslog listener is planned (Phase 26) | forwarding logs from real machines as they happen |
 
-### Supported log formats (parsers)
+### Supported upload formats
 
-| Parser | Source | Recognizes |
+Auto mode (the default) samples the first 50 lines and reports the best match
+as `detected_format`. It then offers **every line** to the parsers below, in
+this order, and keeps the first that parses. A line none of them understands is
+stored by the catch-all, so nothing is dropped. Choosing a `format` instead is
+strict: lines that don't match are skipped, each with a reason.
+
+| `format` | Recognizes | Notes |
 |---|---|---|
-| `ssh.py` | `source_type=ssh` | OpenSSH auth log lines (`Failed password`, `Accepted password`, etc.) |
-| `nginx.py` | `source_type=nginx` | combined log format; URL-decodes path + query before signature matching, keeps original in `raw.url_raw` |
-| `syslog.py` | `source_type=syslog` | generic syslog |
-| `app_json.py` | `source_type=app` | your own app emitting structured JSON events directly |
+| `ssh` | OpenSSH auth results (`Failed`/`Accepted` password or publickey) | username, source_ip, `login_failed` / `login_success` |
+| `nginx` | Nginx / Apache combined access log | URL decoded for signature rules; original kept in `raw.url_raw` |
+| `app` | JSON lines | Mini SIEM's own field names taken strictly; other tools' names (`src_ip`, `user`, `@timestamp`, epoch `ts`) mapped |
+| `syslog5424` | Syslog, RFC 5424 | sshd messages become ssh login events |
+| `syslog` | Syslog, RFC 3164 / BSD | host, process, pid |
+| `kv` | 3+ `key=value` pairs (firewalls, appliances) | `srcip`, `dstport`, `action`, and split `date=` + `time=` mapped |
+| `csv` | CSV / TSV with a header row | columns mapped by name; quoted delimiters handled; ragged rows tolerated |
+| `generic` | anything (catch-all) | stored as-is; an ISO timestamp is used if present; IPs listed in `_ips_found`, never promoted to `source_ip` |
 
-Every uploaded/ingested line is validated against the `EventIn` Pydantic model
-before insert — a bad line (invalid IP, wrong type) is now **skipped and
-counted**, not a 500 for the whole batch (fixed pre-deploy, see §7.7 below).
+Windows Event Logs (Phase 16) and firewall iptables/CEF (Phase 17) come next.
+
+Every parsed line is validated against the `EventIn` model before insert.
+Limits — 10 MB per file, 256 KB per line, 200,000 lines, 1,000 events per
+ingest call — return 413 before the body is processed.
 
 ### Minimal ingest example (single event)
 
@@ -156,6 +168,15 @@ carefully — this is the pre-deploy regression pass.
 | B8 🔧 | Empty file upload | 0-byte file | graceful `parsed: 0` response, no crash |
 | B9 🛡️ | Impossible date in an ssh/syslog/nginx upload | a line dated `Feb 30` among valid lines | 200; that line skipped with `skipped_reasons: {"invalid_timestamp": 1}` — not a 500 (fixed in Phase 13) |
 | B10 🔧 | Year-less dates get the right year | ssh line dated `Feb 29`, or `Dec 31` uploaded in early January | `Feb 29` lands in the latest leap year; `Dec 31` lands in last year, never in the future |
+| B11 🔧 | Format is auto-detected | upload each of `tests/fixtures/` `mixed_auth.log`, `apache_combined.log`, `kv_firewall.log`, `events.csv`, `rfc5424.log` with no format chosen | `detected_format` is syslog / nginx / kv / csv / syslog5424; `skipped: 0`; `by_parser` shows which parser handled how many lines |
+| B12 🔧 | Nothing is dropped in auto mode | upload a file of free text, binary junk and broken JSON | every line stored (`by_parser: {"generic": N}`), searchable in Events; an IP in the text is listed in raw `_ips_found` but **not** set as `source_ip` |
+| B13 🔧 | sshd lines inside a mixed syslog file | upload `mixed_auth.log` | sshd lines are parsed as ssh (username, source_ip, `login_failed`) — not swallowed as plain syslog — so brute-force detection still sees them |
+| B14 🔧 | Other tools' field names are mapped | JSON line `{"src_ip": ..., "user": ..., "@timestamp": ...}`, CSV `src_ip,user,timestamp` columns, `srcip=... dstport=...` | land in `source_ip`, `username`, `event_time`, `dest_port` |
+| B15 🔧 | Forced format is strict | upload `mixed_auth.log` with `format=ssh` | only sshd lines kept; each skipped line has a reason and up to 20 samples with line numbers |
+| B16 🔧 | Upload history | `GET /api/ingest/batches`, `/api/ingest/batches/{id}`, `GET /api/events?batch_id=...` | each upload listed with filename, uploader, detected format, counts, first/last event time; its events filterable by batch |
+| B17 🛡️ | Size limits | file over 10 MB; a streamed `/api/ingest` body over 5 MB; 1,001 events in one ingest call | all 413, before the body is processed; nothing stored |
+| B18 🛡️ | `NaN` / hostile values in rejected input | `POST /api/ingest` with `"raw": {"x": NaN}`, or an invalid `source_ip` holding a `<script>` payload | clean 422; the response never echoes the submitted value back |
+| B19 🔧 | Year hint | upload an old ssh/syslog file with `year=2019` | events dated 2019 instead of the most recent matching year |
 
 ### C. Detection — threshold rules (run `POST /api/detect/run` or wait for the 60s scheduler)
 

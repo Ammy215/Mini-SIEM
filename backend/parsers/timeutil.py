@@ -1,12 +1,16 @@
-"""Timestamps for log formats that leave out the year.
+"""Timestamps from log lines.
 
 Classic syslog and OpenSSH lines are stamped `Jan 10 10:00:01` — no year. The
 old approach, `strptime(ts, "%b %d ...")` then `.replace(year=...)`, parses into
 Python's default year 1900 first. 1900 is not a leap year, so any `Feb 29` line
 raised ValueError and failed a whole upload with a 500; it is also deprecated
 and changes behaviour in Python 3.15.
+
+JSON, CSV and key=value logs instead carry ISO-8601 strings or Unix epochs,
+handled by parse_flexible.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 
 _FORMAT = "%Y %b %d %H:%M:%S"
@@ -17,6 +21,14 @@ _FUTURE_TOLERANCE = timedelta(days=1)
 
 # Far enough back to always reach a leap year (the longest gap is 8 years).
 _YEARS_TO_TRY = 9
+
+_EPOCH_RE = re.compile(r"\d{9,13}(?:\.\d+)?")
+
+# March 1973 to the year 3000. Outside that, a number is a counter, a duration
+# or an ID rather than a time: `"time": 12` must not date an event to 1970.
+# (The same floor as _EPOCH_RE's nine-digit minimum for epoch strings.)
+_MIN_EPOCH_SECONDS = 100_000_000
+_MAX_EPOCH_SECONDS = 32_503_680_000
 
 
 class InvalidTimestamp(ValueError):
@@ -50,5 +62,35 @@ def parse_yearless(ts: str, now: datetime | None = None, year_hint: int | None =
     raise InvalidTimestamp(f"not a real date: {ts!r}")
 
 
+def parse_flexible(value) -> datetime | None:
+    """An ISO-8601 string or a Unix epoch (seconds or milliseconds) as an aware
+    datetime, or None if the value is neither. A naive ISO value is taken as UTC."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return _from_epoch(float(value))
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if _EPOCH_RE.fullmatch(text):
+        return _from_epoch(float(text))
+    if not text or len(text) > 64:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _parse(year: int, ts: str) -> datetime:
     return datetime.strptime(f"{year} {ts}", _FORMAT).replace(tzinfo=timezone.utc)
+
+
+def _from_epoch(number: float) -> datetime | None:
+    if number > 1e11:  # milliseconds
+        number /= 1000
+    if not _MIN_EPOCH_SECONDS <= number < _MAX_EPOCH_SECONDS:
+        return None
+    return datetime.fromtimestamp(number, tz=timezone.utc)

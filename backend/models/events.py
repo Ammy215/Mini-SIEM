@@ -1,7 +1,30 @@
 import ipaddress
+import json
 from datetime import datetime
+from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Longest value each text field accepts. Parsers use the same limits, so a
+# value that doesn't fit is left out of the field rather than failing a line.
+MAX_LENGTHS = {
+    "source_type": 64,
+    "username": 256,
+    "action": 128,
+    "method": 32,
+    "url": 65_536,
+    "user_agent": 4_096,
+    "country": 64,
+    "host": 256,
+    "event_code": 64,
+    "protocol": 32,
+    "raw_message": 262_144,
+}
+
+
+def _text_field():
+    return Field(default=None)
 
 
 def _contains_null_byte(value) -> bool:
@@ -19,18 +42,23 @@ def _contains_null_byte(value) -> bool:
 
 class EventIn(BaseModel):
     event_time: datetime | None = None
-    source_type: str
+    source_type: str = Field(min_length=1, max_length=MAX_LENGTHS["source_type"])
     source_ip: str | None = None
     dest_ip: str | None = None
-    dest_port: int | None = None
-    username: str | None = None
-    action: str | None = None
-    status_code: int | None = None
-    method: str | None = None
-    url: str | None = None
-    user_agent: str | None = None
-    country: str | None = None
-    raw_message: str | None = None
+    dest_port: int | None = Field(default=None, ge=0, le=65535)
+    src_port: int | None = Field(default=None, ge=0, le=65535)
+    username: str | None = Field(default=None, max_length=MAX_LENGTHS["username"])
+    action: str | None = Field(default=None, max_length=MAX_LENGTHS["action"])
+    outcome: Literal["success", "failure", "unknown"] | None = None
+    status_code: int | None = Field(default=None, ge=0, le=999)
+    method: str | None = Field(default=None, max_length=MAX_LENGTHS["method"])
+    url: str | None = Field(default=None, max_length=MAX_LENGTHS["url"])
+    user_agent: str | None = Field(default=None, max_length=MAX_LENGTHS["user_agent"])
+    country: str | None = Field(default=None, max_length=MAX_LENGTHS["country"])
+    host: str | None = Field(default=None, max_length=MAX_LENGTHS["host"])
+    event_code: str | None = Field(default=None, max_length=MAX_LENGTHS["event_code"])
+    protocol: str | None = Field(default=None, max_length=MAX_LENGTHS["protocol"])
+    raw_message: str | None = Field(default=None, max_length=MAX_LENGTHS["raw_message"])
     raw: dict | None = None
 
     @field_validator("source_ip", "dest_ip")
@@ -47,10 +75,17 @@ class EventIn(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def reject_null_bytes(self):
+    def check_storable(self):
         for name in type(self).model_fields:
             if _contains_null_byte(getattr(self, name)):
                 raise ValueError(f"{name} contains a NUL byte, which PostgreSQL cannot store")
+        if self.raw is not None:
+            # JSON parsers accept NaN and Infinity; PostgreSQL's jsonb rejects
+            # them, which would fail the whole insert with a 500.
+            try:
+                json.dumps(self.raw, allow_nan=False)
+            except (ValueError, TypeError, RecursionError):
+                raise ValueError("raw must be plain JSON (no NaN or Infinity)")
         return self
 
 
@@ -58,15 +93,63 @@ class IngestResult(BaseModel):
     ingested: int
 
 
+class SkippedSample(BaseModel):
+    line: int
+    reason: str
+    excerpt: str
+
+
 class UploadResult(BaseModel):
+    batch_id: UUID
     filename: str
-    source_type: str
+    # What the uploader asked for: "auto", or a format they forced.
+    format: str
+    detected_format: str
+    # Share of sampled lines the detected format matched; None when forced.
+    confidence: float | None
     total_lines: int
     parsed: int
     skipped: int
-    # Why lines were skipped, e.g. {"unrecognized_format": 3, "invalid_timestamp": 1}.
-    skipped_reasons: dict[str, int] = Field(default_factory=dict)
     inserted: int
+    by_parser: dict[str, int]
+    skipped_reasons: dict[str, int] = Field(default_factory=dict)
+    skipped_samples: list[SkippedSample] = Field(default_factory=list)
+
+
+class BatchOut(BaseModel):
+    id: UUID
+    filename: str
+    sha256: str
+    size_bytes: int
+    uploaded_by: str | None
+    requested_format: str
+    detected_format: str
+    confidence: float | None
+    total_lines: int
+    parsed: int
+    skipped: int
+    inserted: int
+    by_parser: dict[str, int]
+    skipped_reasons: dict[str, int]
+    skipped_samples: list[SkippedSample]
+    first_event_time: datetime | None
+    last_event_time: datetime | None
+    created_at: datetime
+
+
+class BatchListResponse(BaseModel):
+    batches: list[BatchOut]
+    total: int
+
+
+class FormatOut(BaseModel):
+    name: str
+    label: str
+    description: str
+
+
+class FormatListResponse(BaseModel):
+    formats: list[FormatOut]
 
 
 class EventOut(BaseModel):
@@ -84,6 +167,13 @@ class EventOut(BaseModel):
     user_agent: str | None
     country: str | None
     raw_message: str | None
+    host: str | None = None
+    event_code: str | None = None
+    outcome: str | None = None
+    protocol: str | None = None
+    src_port: int | None = None
+    parser: str | None = None
+    batch_id: UUID | None = None
 
 
 class EventListResponse(BaseModel):

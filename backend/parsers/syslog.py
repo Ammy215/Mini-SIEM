@@ -13,7 +13,7 @@ _LINE_RE = re.compile(
 )
 
 
-def parse_line(line: str) -> dict | None:
+def parse_line(line: str, year_hint: int | None = None) -> dict | None:
     """Returns None for non-syslog lines. Raises InvalidTimestamp for a
     matching line whose date doesn't exist (Feb 30)."""
     match = _LINE_RE.search(line)
@@ -21,8 +21,9 @@ def parse_line(line: str) -> dict | None:
         return None
 
     return {
-        "event_time": parse_yearless(match["ts"]),
+        "event_time": parse_yearless(match["ts"], year_hint=year_hint),
         "source_type": "syslog",
+        "host": match["host"],
         "action": "log",
         "raw_message": line.strip(),
         "raw": {

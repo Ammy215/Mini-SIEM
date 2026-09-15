@@ -1,4 +1,5 @@
 import ipaddress
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -15,6 +16,7 @@ async def list_events(
     action: str | None = Query(None),
     source_ip: str | None = Query(None),
     q: str | None = Query(None, description="Full-text search over raw_message"),
+    batch_id: UUID | None = Query(None, description="Only events from this upload"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = Depends(get_current_user),
@@ -45,6 +47,9 @@ async def list_events(
     if q:
         params.append(q)
         where.append(f"to_tsvector('english', coalesce(raw_message,'')) @@ plainto_tsquery('english', ${len(params)})")
+    if batch_id:
+        params.append(batch_id)
+        where.append(f"batch_id = ${len(params)}")
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -53,7 +58,8 @@ async def list_events(
         rows = await conn.fetch(
             f"""
             SELECT id, event_time, source_type, source_ip, dest_ip, dest_port, username,
-                   action, status_code, method, url, user_agent, country, raw_message
+                   action, status_code, method, url, user_agent, country, raw_message,
+                   host, event_code, outcome, protocol, src_port, parser, batch_id
             FROM events {where_sql}
             ORDER BY event_time DESC
             LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}
@@ -69,6 +75,8 @@ async def list_events(
             dest_port=r["dest_port"], username=r["username"], action=r["action"],
             status_code=r["status_code"], method=r["method"], url=r["url"],
             user_agent=r["user_agent"], country=r["country"], raw_message=r["raw_message"],
+            host=r["host"], event_code=r["event_code"], outcome=r["outcome"], protocol=r["protocol"],
+            src_port=r["src_port"], parser=r["parser"], batch_id=r["batch_id"],
         )
         for r in rows
     ]

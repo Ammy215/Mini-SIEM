@@ -32,7 +32,13 @@ async def pool():
         # missing-column failures across the suite.
         await assert_schema_current(seed_conn)
         await engine.seed_all(seed_conn)
+        session_started = await seed_conn.fetchval("SELECT now()")
     yield p
+    async with p.acquire() as cleanup_conn:
+        # Upload tests create ingest_batches rows through the real API (their
+        # events are removed by the tests themselves). The suite runs with the
+        # dev server stopped, so every batch created during it came from a test.
+        await cleanup_conn.execute("DELETE FROM ingest_batches WHERE created_at >= $1", session_started)
     await disconnect()
 
 

@@ -2,13 +2,17 @@ import asyncio
 import contextlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config import settings
 from database import connect, disconnect
 from detection import engine
 from detection.scheduler import run_scheduler_loop
+from middleware.body_size_limit import BodySizeLimitMiddleware
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 from migrations import assert_schema_current
@@ -38,11 +42,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Mini SIEM", lifespan=lifespan)
 
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    # FastAPI's default 422 echoes every rejected value back to the client. In
+    # a SIEM that value is usually log content an attacker wrote — reflected
+    # straight back, sometimes 100 KB of it — and one holding NaN can't be
+    # encoded as JSON at all, which turned the 422 into a server error. Where
+    # the problem is and what's wrong is all a client needs.
+    errors = [{key: error[key] for key in ("type", "loc", "msg") if key in error} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
+
 # Middleware order matters: add_middleware() makes the most-recently-added
 # layer outermost. CORS is added last so it always wraps the response (even a
 # 429 from GlobalRateLimitMiddleware) — otherwise a rate-limited response
 # would reach the browser with no Access-Control-Allow-Origin header and show
-# up as an opaque CORS failure instead of a readable 429.
+# up as an opaque CORS failure instead of a readable 429. The body size limit
+# is innermost for the same reason: its 413 still gets security headers and CORS.
+app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(GlobalRateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
