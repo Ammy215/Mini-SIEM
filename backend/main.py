@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from database import connect, disconnect
-from detection import engine
+from detection import context, engine
 from detection.scheduler import run_scheduler_loop
 from middleware.body_size_limit import BodySizeLimitMiddleware
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
@@ -23,6 +23,9 @@ from routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # A malformed HOME_COUNTRIES / BUSINESS_* setting stops startup, naming the
+    # setting, instead of failing every alert that detection tries to score.
+    context.load(settings)
     pool = await connect()
     async with pool.acquire() as conn:
         # Fail at startup, with the fix in the message, rather than on the

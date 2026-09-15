@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from config import settings
 from detection import rule_engine, signature, threshold
 from detection.alerting import MAX_EVIDENCE_VALUES
 
@@ -254,3 +255,45 @@ async def test_a_rule_whose_definition_does_not_match_its_type_never_runs(conn):
 
     assert (await threshold.run_all(conn))["pytest_mistyped"] == 0
 
+
+
+# --- after_hours ----------------------------------------------------------------------
+
+def _business_hours(monkeypatch, hours):
+    monkeypatch.setattr(settings, "business_hours", hours)
+    monkeypatch.setattr(settings, "business_days", "mon-sun")
+    monkeypatch.setattr(settings, "business_timezone", "UTC")
+
+
+async def _one_xss_alert(conn, ip):
+    await _enable(conn, "xss-http-001")
+    await _xss_hits(conn, ip, 1)
+    await signature.run_all(conn)
+    alert = (await _xss_alerts(conn, ip))[0]
+    return alert, json.loads(alert["evidence"])
+
+
+async def test_an_alert_outside_business_hours_scores_after_hours(conn, monkeypatch):
+    start = (_now().hour + 12) % 24  # a one-hour window half a day away from the events
+    _business_hours(monkeypatch, f"{start:02d}:00-{start + 1:02d}:00")
+
+    alert, evidence = await _one_xss_alert(conn, "203.0.113.174")
+
+    assert alert["threat_score"] == 15 + 5
+    assert evidence["context_signals"] == ["after_hours"]
+
+
+async def test_an_alert_inside_business_hours_does_not(conn, monkeypatch):
+    _business_hours(monkeypatch, "00:00-24:00")
+
+    alert, evidence = await _one_xss_alert(conn, "203.0.113.175")
+
+    assert alert["threat_score"] == 15
+    assert "context_signals" not in evidence and "context_skipped" not in evidence
+
+
+async def test_unconfigured_business_hours_are_recorded_as_skipped(conn):
+    alert, evidence = await _one_xss_alert(conn, "203.0.113.176")
+
+    assert alert["threat_score"] == 15
+    assert evidence["context_skipped"] == ["after_hours: business hours not configured"]

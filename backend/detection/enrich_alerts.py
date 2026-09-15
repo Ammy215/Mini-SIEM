@@ -1,12 +1,14 @@
-import ipaddress
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+from config import settings
+from detection import context
 from detection.scorer import THREAT_WEIGHTS, max_severity, severity_for_score
-from enrichment import abuseipdb, otx
+from enrichment import abuseipdb, geo, otx
 from enrichment.cache import get_cached, set_cached
 from enrichment.errors import ProviderError, ProviderNotConfigured
+from enrichment.ip import is_public
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +35,23 @@ LOOKUPS_PER_TICK = 25
 _PROVIDERS = ((abuseipdb.PROVIDER, abuseipdb.query), (otx.PROVIDER, otx.query))
 
 
-def _is_public(ip: str) -> bool:
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    return not (
-        addr.is_private or addr.is_loopback or addr.is_link_local
-        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
-    )
+_is_public = is_public
+
+
+async def _foreign_geo(conn, ip: str, provider_data: dict) -> tuple[list[str], str | None, str | None]:
+    """(signals, country, skipped reason). The country AbuseIPDB returned is
+    used when there is one; otherwise the geo lookup (cache first)."""
+    home = context.parse_countries(settings.home_countries)
+    if not home:
+        return [], None, "foreign_geo: home countries not configured"
+    country = (provider_data.get(abuseipdb.PROVIDER) or {}).get("country_code")
+    if not country:
+        location = await geo.lookup(conn, ip)
+        country = location["country"] if location else None
+    if not country:
+        return [], None, "foreign_geo: country unknown"
+    country = country.upper()
+    return (["foreign_geo"] if context.is_foreign(country, home) else []), country, None
 
 
 async def _get_or_fetch(conn, ip: str, provider_name: str, query_fn) -> dict | None:
@@ -176,8 +186,12 @@ async def run_all(conn) -> dict[str, int]:
             logger.exception("enrichment lookup failed for alert_id=%s ip=%s", row["id"], ip)
             continue
 
+        geo_signals, country, geo_skipped = await _foreign_geo(conn, ip, provider_data)
+        if geo_skipped:
+            evidence["enrichment_context_skipped"] = [geo_skipped]
+
         unconfigured = [name for name, data in provider_data.items() if data is None]
-        if len(unconfigured) == len(provider_data):
+        if len(unconfigured) == len(provider_data) and not geo_signals:
             await _mark_checked(conn, row["id"], evidence, signals=[], reason="no threat-intel providers configured")
             checked += 1
             continue
@@ -187,6 +201,9 @@ async def run_all(conn) -> dict[str, int]:
         signals, suppressed, observed = evaluate_signals(
             provider_data[abuseipdb.PROVIDER] or {}, provider_data[otx.PROVIDER] or {},
         )
+        signals += geo_signals
+        if country:
+            observed["country"] = country
 
         # Recorded either way so an analyst can see what the providers said and
         # why a signal did or didn't count.

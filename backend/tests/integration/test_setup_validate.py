@@ -54,3 +54,8 @@ async def test_setup_validate_allows_admin(client):
     # Asserted as a type, not a fixed value — a developer legitimately running
     # the suite with ENABLE_ATTACK_LAB=true shouldn't get a spurious failure.
     assert isinstance(body["attack_lab_enabled"], bool)
+    # tests/conftest.py pins these off, whatever the local .env says.
+    assert body["context"] == {
+        "home_countries": [], "business_hours_configured": False, "business_hours": None,
+        "business_days": None, "business_timezone": None, "geo_lookups_enabled": False,
+    }

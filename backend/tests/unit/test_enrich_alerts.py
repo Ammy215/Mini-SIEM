@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from config import settings
 from detection import enrich_alerts
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -163,3 +164,45 @@ async def test_already_checked_alert_is_not_reprocessed(conn):
 
     alert = await conn.fetchrow("SELECT threat_score FROM alerts WHERE id = $1", alert_id)
     assert alert["threat_score"] == 30 + 20 + 15  # unchanged by the second pass
+
+
+# --- foreign_geo ----------------------------------------------------------------------
+
+async def _geo_alert(conn, ip, country):
+    await _seed_cache(conn, ip, "abuseipdb", {"abuse_confidence_score": 0, "country_code": country, "is_whitelisted": False})
+    await _seed_cache(conn, ip, "otx", {"pulse_count": 0})
+    return await _insert_alert(conn, source_ip=ip, threat_score=30)
+
+
+async def test_an_alert_from_outside_the_home_countries_gets_foreign_geo(conn, monkeypatch):
+    monkeypatch.setattr(settings, "home_countries", "US,GB")
+    alert_id = await _geo_alert(conn, "8.8.4.4", "RU")
+
+    await enrich_alerts.run_all(conn)
+
+    row = await conn.fetchrow("SELECT threat_score, evidence FROM alerts WHERE id = $1", alert_id)
+    evidence = json.loads(row["evidence"])
+    assert row["threat_score"] == 35
+    assert evidence["enrichment_signals"] == ["foreign_geo"]
+    assert evidence["enrichment_observed"]["country"] == "RU"
+
+
+async def test_an_alert_from_a_home_country_gets_no_geo_signal(conn, monkeypatch):
+    monkeypatch.setattr(settings, "home_countries", "ru")
+    alert_id = await _geo_alert(conn, "8.8.4.4", "RU")
+
+    await enrich_alerts.run_all(conn)
+
+    row = await conn.fetchrow("SELECT threat_score, evidence FROM alerts WHERE id = $1", alert_id)
+    assert row["threat_score"] == 30
+    assert json.loads(row["evidence"])["enrichment_signals"] == []
+
+
+async def test_unconfigured_home_countries_are_recorded_as_skipped(conn):
+    alert_id = await _geo_alert(conn, "8.8.4.4", "RU")
+
+    await enrich_alerts.run_all(conn)
+
+    evidence = json.loads(await conn.fetchval("SELECT evidence FROM alerts WHERE id = $1", alert_id))
+    assert evidence["enrichment_context_skipped"] == ["foreign_geo: home countries not configured"]
+    assert "foreign_geo" not in evidence["enrichment_signals"]

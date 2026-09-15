@@ -2,6 +2,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from detection import correlate, enrich_alerts, rule_engine, seeding, signature, threshold
+from enrichment import geo
 
 # How long a claimed run stays exclusive. A normal run takes seconds; the worst
 # case (every capped provider lookup timing out) is a few minutes. If the
@@ -52,6 +53,8 @@ async def run_all(conn) -> dict[str, int]:
         results = await threshold.run_all(conn)
         results.update(await signature.run_all(conn))
         results.update(await rule_engine.run_rules(conn, "sequence"))
+        # Locations first, so enrichment's foreign_geo check finds them cached.
+        results.update(await geo.run_all(conn))
         # enrichment runs before correlation: incidents inherit an alert's severity
         # once, at link time, so an alert must reach its final post-enrichment
         # severity before correlate.py folds it into an incident.

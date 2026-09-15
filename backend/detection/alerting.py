@@ -8,6 +8,8 @@ created with; threat intel can still raise them.
 
 import json
 
+from config import settings
+from detection import context
 from detection.scorer import score_alert
 
 MAX_EVIDENCE_VALUES = 50
@@ -44,6 +46,14 @@ async def upsert_alert(
             existing["id"], json.dumps(merged), first_time, last_time,
         )
         return existing["id"], False
+
+    signals, evidence = list(signals), dict(evidence)
+    business_hours = context.load(settings).business_hours
+    if business_hours is None:
+        evidence["context_skipped"] = ["after_hours: business hours not configured"]
+    elif context.is_after_hours(first_time, business_hours):
+        signals.append("after_hours")
+        evidence["context_signals"] = ["after_hours"]
 
     score, severity = score_alert(signals, minimum=rule["severity"])
     alert_id = await conn.fetchval(

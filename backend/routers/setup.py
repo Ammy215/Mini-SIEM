@@ -4,6 +4,7 @@ from auth.deps import CurrentUser
 from auth.rbac import require_role
 from config import settings
 from database import get_pool
+from detection import context
 
 router = APIRouter()
 
@@ -36,10 +37,21 @@ async def validate(current_user: CurrentUser = Depends(require_role("admin"))):
     tables = {name: (name in existing_tables) for name in EXPECTED_TABLES}
     keys_present = {name: bool(value) for name, value in API_KEYS.items()}
 
+    # Validated at startup, so this can't fail here.
+    ctx = context.load(settings)
+
     return {
         "database": "connected",
         "tables": tables,
         "all_tables_present": all(tables.values()),
         "api_keys_present": keys_present,
         "attack_lab_enabled": settings.enable_attack_lab,
+        "context": {
+            "home_countries": sorted(ctx.home_countries),
+            "business_hours_configured": ctx.business_hours is not None,
+            "business_hours": settings.business_hours if ctx.business_hours else None,
+            "business_days": settings.business_days if ctx.business_hours else None,
+            "business_timezone": settings.business_timezone if ctx.business_hours else None,
+            "geo_lookups_enabled": settings.enable_geo_lookups,
+        },
     }

@@ -20,6 +20,15 @@ function KeyRow({ name, present }) {
   );
 }
 
+function ContextRow({ label, value, unset }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm border-b border-border last:border-0">
+      <span className="text-muted-foreground">{label}</span>
+      {value ? <span className="font-mono text-siem-green">{value}</span> : <span className="text-muted-foreground">{unset}</span>}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const isAdmin = user?.roles?.includes("admin");
@@ -65,6 +74,35 @@ export default function Settings() {
               Object.entries(validate.api_keys_present).map(([name, present]) => (
                 <KeyRow key={name} name={name} present={present} />
               ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && validate?.context && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Detection Context</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ContextRow
+              label="Home countries"
+              value={validate.context.home_countries.length ? validate.context.home_countries.join(", ") : null}
+              unset="Not set — foreign_geo is skipped (HOME_COUNTRIES)"
+            />
+            <ContextRow
+              label="Business hours"
+              value={
+                validate.context.business_hours_configured
+                  ? `${validate.context.business_hours} ${validate.context.business_days} (${validate.context.business_timezone})`
+                  : null
+              }
+              unset="Not set — after_hours is skipped (BUSINESS_HOURS)"
+            />
+            <ContextRow
+              label="Background country lookups"
+              value={validate.context.geo_lookups_enabled ? "Enabled" : null}
+              unset="Disabled (ENABLE_GEO_LOOKUPS)"
+            />
           </CardContent>
         </Card>
       )}

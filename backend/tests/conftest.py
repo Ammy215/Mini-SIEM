@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,13 @@ from httpx import ASGITransport, AsyncClient
 # was invoked (bare `pytest` doesn't add cwd to sys.path the way `python -m
 # pytest` does).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# These settings add score to alerts or make network calls, so the suite pins
+# them instead of inheriting whatever a developer's .env says. Tests that
+# exercise them switch them on explicitly. (Environment variables win over .env.)
+os.environ["HOME_COUNTRIES"] = ""
+os.environ["BUSINESS_HOURS"] = ""
+os.environ["ENABLE_GEO_LOOKUPS"] = "false"
 
 from database import connect, disconnect  # noqa: E402
 from detection import engine  # noqa: E402

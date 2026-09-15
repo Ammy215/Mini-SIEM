@@ -351,6 +351,23 @@ carefully — this is the pre-deploy regression pass.
 | P9 🔧 | Delete a custom rule | delete one that never alerted; try one that has alerts; try a built-in | first → gone, audit `rule_deleted`; with alerts → 409 "switch it off instead"; built-in → 400 |
 | P10 🔧 | Rule health | save a rule, break it straight in the DB (or wait for a timeout), Run detection | Rules page shows a red **Error** badge whose tooltip says why (no raw database text); fixing it clears the badge |
 
+### Q. Geo enrichment and context signals (Phase 21)
+
+Configure in `backend/.env` (blank = not configured): `HOME_COUNTRIES=US,GB`,
+`BUSINESS_HOURS=09:00-17:00`, `BUSINESS_DAYS=mon-fri`,
+`BUSINESS_TIMEZONE=America/New_York`, `ENABLE_GEO_LOOKUPS=true`.
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| Q1 🔧 | Settings show the context | set the values above, restart, admin → Settings | **Detection Context** card lists home countries, hours/days/zone, lookups Enabled |
+| Q2 🛡️ | Malformed settings stop startup | `BUSINESS_HOURS=9-5`, or `BUSINESS_TIMEZONE=Mars/Olympus`, or `HOME_COUNTRIES=USA`; restart | backend refuses to start and the error names the setting |
+| Q3 🔧 | after_hours | trigger an alert outside business hours (or set hours that exclude now) | threat score +5; evidence `context_signals: ["after_hours"]`. Inside hours: no bonus. Uses the business time zone, including daylight saving |
+| Q4 🔧 | foreign_geo | an alert from a public IP whose country isn't a home country; wait for enrichment | score +5; `enrichment_signals` includes `foreign_geo`; `enrichment_observed.country` set. A home-country IP gets no bonus |
+| Q5 🔧 | Not configured = skipped, not guessed | leave the settings blank | evidence has `context_skipped` / `enrichment_context_skipped` with the reason; scores unchanged |
+| Q6 🔧 | Background country lookups | ingest events from a public IP, Run detection | results show `geo_looked_up`; an `ip_geo` row with the country (cached 30 days); private and documentation IPs are never looked up |
+| Q7 🛡️ | Rate-limit backoff | ipinfo answers HTTP 429 | ipinfo isn't asked again for 24 h (`provider_backoff`); AbuseIPDB's cached country is used meanwhile |
+| Q8 🔧 | Lookups switched off | `ENABLE_GEO_LOOKUPS=false` | no ipinfo calls; Settings shows Disabled |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist
