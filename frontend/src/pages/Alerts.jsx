@@ -7,6 +7,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AiSummary } from "@/components/AiSummary";
+import { AlertEvidence } from "@/components/AlertEvidence";
 import { LogText } from "@/components/LogText";
 import { cn } from "@/lib/utils";
 import { useAlerts, useSummarizeAlert } from "@/api/hooks";
@@ -178,7 +179,13 @@ export default function Alerts() {
                   {isOpen && (
                     <TableRow>
                       <TableCell colSpan={8} className="bg-background/50 px-4 py-3">
-                        <AiSummary kind="alert" targetId={alert.id} useSummarize={useSummarizeAlert} />
+                        {/* The evidence is the raw proof; the AI summary is an
+                            optional plain-English reading of it. Evidence first,
+                            so triage never depends on sending data to Groq. */}
+                        <div className="space-y-3">
+                          <AlertEvidence alert={alert} />
+                          <AiSummary kind="alert" targetId={alert.id} useSummarize={useSummarizeAlert} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}

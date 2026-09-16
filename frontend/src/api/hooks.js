@@ -66,6 +66,16 @@ export function useAlerts(filters = {}) {
   });
 }
 
+// The list leaves out `evidence`; the detail route carries it, so the expanded
+// row fetches the one alert it is showing.
+export function useAlert(id) {
+  return useQuery({
+    queryKey: ["alerts", "detail", id],
+    queryFn: async () => (await api.get(`/api/alerts/${id}`)).data,
+    enabled: id != null,
+  });
+}
+
 export function useIncidents(filters = {}) {
   return useQuery({
     queryKey: ["incidents", filters],

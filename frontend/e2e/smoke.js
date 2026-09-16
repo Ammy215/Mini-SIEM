@@ -67,6 +67,28 @@ async function main() {
     check(`${path} loads`, true);
   }
 
+  console.log("2b. An alert shows its evidence without the AI summary");
+  await page.goto(`${FRONTEND_URL}/alerts`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+  const firstAlert = page.locator("table tbody tr").first();
+  if (await firstAlert.count()) {
+    await firstAlert.click();
+    await page.waitForSelector("text=Why this score", { timeout: 10000 }).catch(() => {});
+    const panel = page.locator("text=Why this score");
+    check("expanded alert shows the evidence panel", await panel.isVisible().catch(() => false));
+    // The AI summary is an addition to the evidence, never a replacement for it.
+    check("the AI summary button is still offered alongside it",
+      await page.locator('button:has-text("Summarize with AI")').isVisible().catch(() => false));
+    // Prose in the panel must wrap; every TableCell sets white-space: nowrap.
+    const overflowing = await page.evaluate(() => {
+      const els = [...document.querySelectorAll("p, dd")];
+      return els.filter((el) => el.scrollWidth > el.clientWidth + 1).length;
+    });
+    check("nothing in the evidence panel overflows its column", overflowing === 0);
+  } else {
+    console.log("  skip no alerts in the database to expand");
+  }
+
   console.log("3. Attack Lab (if enabled)");
   const attackLabLink = page.locator('a[href="/attack-lab"]');
   const attackLabVisible = await attackLabLink.isVisible().catch(() => false);
