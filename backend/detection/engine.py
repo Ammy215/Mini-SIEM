@@ -64,9 +64,10 @@ async def run_all(conn) -> dict[str, int]:
         results.update(await analyze_next_batch(conn))
         # Locations first, so enrichment's foreign_geo check finds them cached.
         results.update(await geo.run_all(conn))
-        # enrichment runs before correlation: incidents inherit an alert's severity
-        # once, at link time, so an alert must reach its final post-enrichment
-        # severity before correlate.py folds it into an incident.
+        # enrichment runs before correlation so a new alert reaches its final
+        # severity before it is folded into an incident. Enrichment that lands
+        # later (a retry, a provider that was down) is picked up anyway:
+        # correlate.run_all recomputes every incident from its alerts each pass.
         results.update(await enrich_alerts.run_all(conn))
         results.update(await correlate.run_all(conn))
         return results

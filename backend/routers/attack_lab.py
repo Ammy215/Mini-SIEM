@@ -1,9 +1,9 @@
-import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 
 from database import get_pool
+from ingest_service import insert_events
 from models.attack_lab import LoginAttemptIn, LoginAttemptResult, SearchResult
 
 router = APIRouter(prefix="/api/attack-lab", tags=["attack-lab"])
@@ -13,29 +13,17 @@ router = APIRouter(prefix="/api/attack-lab", tags=["attack-lab"])
 DECOY_USER = "admin"
 DECOY_PASS = "letmein123"
 
-_INSERT_SQL = """
-    INSERT INTO events (
-        event_time, source_type, source_ip, dest_port, username,
-        action, status_code, method, url, user_agent, raw_message
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-"""
-
 
 async def _log_event(conn, **fields) -> None:
-    await conn.execute(
-        _INSERT_SQL,
-        datetime.now(timezone.utc),
-        fields.get("source_type"),
-        fields.get("source_ip"),
-        fields.get("dest_port"),
-        fields.get("username"),
-        fields.get("action"),
-        fields.get("status_code"),
-        fields.get("method"),
-        fields.get("url"),
-        fields.get("user_agent"),
-        fields.get("raw_message"),
-    )
+    # Goes through the same writer as the ingest API, uploads and the syslog
+    # listener, so lab traffic gets every column real traffic does — `parser`
+    # included, which the Events explorer groups by.
+    event = {
+        "event_time": datetime.now(timezone.utc),
+        "parser": "attack_lab",
+        **fields,
+    }
+    await insert_events(conn, [event])
 
 
 @router.post("/login", response_model=LoginAttemptResult)

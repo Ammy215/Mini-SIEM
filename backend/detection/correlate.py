@@ -52,6 +52,53 @@ async def _link_alert(conn, alert_id: int, incident_id: int) -> None:
     await conn.execute("UPDATE alerts SET incident_id = $1 WHERE id = $2", incident_id, alert_id)
 
 
+# An incident's severity, timeline and alert count are derived facts about the
+# alerts linked to it — not analyst decisions (only `status` is that). They were
+# previously written once, when an alert joined, so later changes to the same
+# alert drifted: enrichment escalates an alert's severity after correlation ran,
+# and a repeat hit extends its last_event_time when it merges into the open
+# alert. Both left the Incidents page disagreeing with the alert it came from.
+# Recomputing them every pass makes the incident follow its alerts instead.
+_REFRESH_SQL = """
+    WITH derived AS (
+        SELECT incident_id AS id,
+               COUNT(*)::int AS alert_count,
+               MIN(COALESCE(first_event_time, created_at)) AS first_seen,
+               MAX(COALESCE(last_event_time, created_at)) AS last_seen,
+               MAX(CASE severity
+                       WHEN 'critical' THEN 4 WHEN 'high' THEN 3
+                       WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END) AS severity_rank
+        FROM alerts
+        WHERE incident_id IS NOT NULL
+        GROUP BY incident_id
+    ), target AS (
+        SELECT id, alert_count, first_seen, last_seen,
+               CASE severity_rank
+                   WHEN 4 THEN 'critical' WHEN 3 THEN 'high'
+                   WHEN 2 THEN 'medium' WHEN 1 THEN 'low' END AS severity
+        FROM derived
+    )
+    UPDATE incidents i
+    SET alert_count = t.alert_count,
+        first_seen = t.first_seen,
+        last_seen = t.last_seen,
+        severity = COALESCE(t.severity, i.severity)
+    FROM target t
+    WHERE i.id = t.id
+      AND (i.alert_count IS DISTINCT FROM t.alert_count
+           OR i.first_seen IS DISTINCT FROM t.first_seen
+           OR i.last_seen IS DISTINCT FROM t.last_seen
+           OR i.severity IS DISTINCT FROM COALESCE(t.severity, i.severity))
+    RETURNING i.id
+"""
+
+
+async def refresh_incidents(conn) -> int:
+    """Recomputes every incident from its linked alerts. Returns rows changed."""
+    rows = await conn.fetch(_REFRESH_SQL)
+    return len(rows)
+
+
 async def run_all(conn) -> dict[str, int]:
     # Alerts are placed on the timeline by when their events happened. Alerts
     # written without event times (older rows, hand-inserted ones) fall back to
@@ -108,4 +155,10 @@ async def run_all(conn) -> dict[str, int]:
             await _link_alert(conn, row["id"], incident_id)
             incidents_created += 1
 
-    return {"incidents_created": incidents_created, "alerts_joined": alerts_joined}
+    incidents_refreshed = await refresh_incidents(conn)
+
+    return {
+        "incidents_created": incidents_created,
+        "alerts_joined": alerts_joined,
+        "incidents_refreshed": incidents_refreshed,
+    }

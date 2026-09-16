@@ -291,3 +291,45 @@ syslog over TLS with client certificates (RFC 5425) or an agent that
 authenticates to the ingest API; both are deferred. A hosted deployment on
 Render's free tier can't receive syslog at all, so production keeps
 `ENABLE_SYSLOG_LISTENER` unset.
+
+### 4.12 The attack map and the Events explorer can name different countries
+
+Two different notions of "country" exist for the same event:
+
+- `events.country` — whatever the log line itself carried. Some formats include
+  a country field; most don't, so it's usually null.
+- `ip_geo.country` — what geo enrichment (Phase 21) resolved for the source IP
+  and cached for 30 days.
+
+`routers/events.py` shows `COALESCE(e.country, g.country)`, preferring what the
+log claimed. `routers/stats.py::/api/stats/geo` — which feeds the attack map —
+joins `ip_geo` only. So an event whose log line named a country that enrichment
+hasn't resolved (or resolved differently) appears with that country in the
+Events table while the map either places it elsewhere or counts it under
+`unlocated`.
+
+Nothing is wrong in either query on its own; they answer different questions
+("what did the log say" vs "where does the IP resolve"). Reconciling them means
+picking one as authoritative and labelling the other in the UI — worth doing
+when a log source that actually populates `events.country` is in regular use.
+Today no shipped parser sets it, so the two agree in practice.
+
+### 4.13 `event_time` is trusted as given, with no sanity bound
+
+An event's timestamp comes from the log line. Phase 13 made impossible dates
+(Feb 30) a counted skip rather than a 500, but a *possible* date that is simply
+wrong — a host with a broken clock, a doctored line, a year typo giving 2087 —
+is stored as-is.
+
+A far-future timestamp then sits permanently at the top of every "most recent"
+view and inside every range that ends "now", and a far-past one drops out of
+the ranges where its alert would be expected. Detection still works (rules run
+over the event's own time), and the raw line is preserved either way, so nothing
+is lost — it just looks wrong.
+
+The fix is a configurable acceptance window at ingest (say, `event_time` more
+than N days ahead of ingest time, or before some floor, is clamped to
+`ingested_at` with the original kept in `raw.original_event_time` and counted
+in the batch's skip summary). Deferred because choosing N is a policy decision
+that depends on the log sources in use, and clamping silently would hide a
+genuine clock problem the operator should see.

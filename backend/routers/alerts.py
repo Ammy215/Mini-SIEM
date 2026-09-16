@@ -48,7 +48,11 @@ async def list_alerts(
             SELECT id, rule_id, incident_id, title, severity, mitre_technique, source_ip, threat_score, status,
                    created_at, first_event_time, last_event_time, origin, batch_id
             FROM alerts {where_sql}
-            ORDER BY created_at DESC
+            -- Ordered by the same time the UI shows for each alert (when its
+            -- events happened, falling back to when it was raised). Ordering by
+            -- created_at instead put alerts from an uploaded historical log at
+            -- the top of a list whose visible dates ran years out of order.
+            ORDER BY COALESCE(first_event_time, created_at) DESC, id DESC
             LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}
             """,
             *params, limit, offset,

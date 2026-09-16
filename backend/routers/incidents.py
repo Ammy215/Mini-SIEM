@@ -55,8 +55,10 @@ async def get_incident(incident_id: int, current_user: CurrentUser = Depends(get
 
         alert_rows = await conn.fetch(
             """
-            SELECT id, rule_id, incident_id, title, severity, mitre_technique, source_ip, threat_score, status, created_at
-            FROM alerts WHERE incident_id = $1 ORDER BY created_at ASC
+            SELECT id, rule_id, incident_id, title, severity, mitre_technique, source_ip, threat_score, status,
+                   created_at, first_event_time, last_event_time, origin, batch_id
+            FROM alerts WHERE incident_id = $1
+            ORDER BY COALESCE(first_event_time, created_at) ASC, id ASC
             """,
             incident_id,
         )

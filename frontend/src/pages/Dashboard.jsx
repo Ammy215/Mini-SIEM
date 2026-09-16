@@ -193,7 +193,9 @@ export default function Dashboard() {
 
       {stats?.alerts_by_severity && (
         <div className="flex gap-3 flex-wrap items-center">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">Open by severity</span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            Open alerts by severity · right now
+          </span>
           {Object.entries(stats.alerts_by_severity).map(([severity, count]) => (
             <div key={severity} className="flex items-center gap-2">
               <SeverityBadge severity={severity} />
@@ -212,7 +214,7 @@ export default function Dashboard() {
         <ChartCard title="Events by source">
           <DonutChart data={sources} emptyText="No events in this range" />
         </ChartCard>
-        <ChartCard title="Alerts by severity">
+        <ChartCard title={`Alerts raised by severity · ${range.label}`}>
           <DonutChart data={severities} emptyText="No alerts in this range" />
         </ChartCard>
       </div>
