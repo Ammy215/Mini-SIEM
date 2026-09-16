@@ -464,7 +464,7 @@ Mini-SIEM/
 │  ├─ detection/   (threshold.py, signature.py, scorer.py, scheduler.py, correlate.py)
 │  ├─ enrichment/  (abuseipdb.py, otx.py, ipinfo.py, virustotal.py, cache.py)
 │  ├─ rules_yaml/  (*.yml signature rules)
-│  ├─ scripts/     (migrate.py, seed_admin.py, seed_rules.py)
+│  ├─ scripts/     (migrate.py, seed_admin.py, seed_rules.py, clear_detection_lease.py)
 │  ├─ sql/         (schema.sql)
 │  └─ tests/       (unit/, integration/, fixtures/)
 └─ frontend/
@@ -499,7 +499,8 @@ POST   /api/ingest/batches/{id}/analyze ← queue (or re-run) analysis of an upl
 
 # events
 GET    /api/events              ← filter, paginate, full-text search
-GET    /api/events/{id}
+                                  (no per-event route: the list returns every
+                                  displayed field, and `raw` stays server-side)
 
 # rules + detection
 GET    /api/rules               ← includes each rule's last run / last error
@@ -771,6 +772,22 @@ npm install
 copy .env.example .env
 npm run dev                     # → http://localhost:5173
 ```
+
+**If detection seems stuck after a crash or a hard stop.** One pass runs at a
+time, claimed by a lease held for up to 15 minutes. A backend killed mid-pass
+never releases it, so until it expires every `POST /api/detect/run` answers
+409 "already in progress", scheduler ticks skip, and an upload waiting for
+analysis sits at **Waiting for analysis**. Nothing is lost — it resumes on its
+own. To not wait:
+
+```bash
+cd backend
+python scripts/clear_detection_lease.py            # who holds it, and for how long
+python scripts/clear_detection_lease.py --release  # release it
+```
+
+Only release it when no other backend is genuinely running a pass against the
+same database.
 
 ---
 

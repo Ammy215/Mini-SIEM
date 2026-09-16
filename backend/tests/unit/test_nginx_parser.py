@@ -61,3 +61,50 @@ def test_benign_real_browser_request_is_unaffected():
     assert e["raw"]["url_was_encoded"] is False
     assert e["status_code"] == 200
     assert "HeadlessChrome" in e["user_agent"]
+
+
+# A browser percent-encodes spaces in a URL. An attacker writing the request
+# line by hand need not, and nginx logs whatever arrived. Splitting the request
+# field into exactly three tokens therefore dropped the requests most worth
+# detecting: url, status_code and user_agent were all lost to the generic
+# parser, so the SQLi and scanner-UA rules could never match them.
+SQLI_WITH_LITERAL_SPACES = (
+    '203.0.113.5 - - [10/Jan/2026:10:00:02 +0000] '
+    '"GET /products?id=1\' OR 1=1-- HTTP/1.1" 500 128 "-" "sqlmap/1.6"'
+)
+
+
+def test_request_line_with_unencoded_spaces_still_parses():
+    e = parse_line(SQLI_WITH_LITERAL_SPACES)
+    assert e is not None
+    assert e["method"] == "GET"
+    assert e["url"] == "/products?id=1' OR 1=1--"
+    assert e["status_code"] == 500
+    assert e["user_agent"] == "sqlmap/1.6"
+
+
+def test_unencoded_spaces_keep_the_text_the_sqli_rule_matches():
+    e = parse_line(SQLI_WITH_LITERAL_SPACES)
+    assert "' OR 1=1" in e["url"]
+
+
+def test_unencoded_spaces_keep_the_user_agent_the_scanner_rule_matches():
+    e = parse_line(SQLI_WITH_LITERAL_SPACES)
+    assert "sqlmap" in e["user_agent"]
+
+
+def test_xss_payload_with_spaces_survives():
+    line = ('198.51.100.9 - - [10/Jan/2026:10:00:04 +0000] '
+            '"GET /s?q=<script> alert(1) </script> HTTP/1.1" 200 300 "-" "Mozilla/5.0"')
+    assert parse_line(line)["url"] == "/s?q=<script> alert(1) </script>"
+
+
+def test_a_request_field_that_is_not_a_request_line_is_left_to_generic():
+    # Raw TLS bytes sent to an HTTP port; nginx logs them verbatim.
+    line = '203.0.113.9 - - [10/Jan/2026:10:00:05 +0000] "\x16\x03\x01" 400 0 "-" "-"'
+    assert parse_line(line) is None
+
+
+def test_a_request_without_a_protocol_is_left_to_generic():
+    line = '203.0.113.9 - - [10/Jan/2026:10:00:06 +0000] "GET /only-two" 400 0 "-" "-"'
+    assert parse_line(line) is None

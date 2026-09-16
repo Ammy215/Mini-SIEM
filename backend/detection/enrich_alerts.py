@@ -124,9 +124,39 @@ async def _mark_checked(conn, alert_id: int, evidence: dict, signals: list[str] 
     await _save_evidence(conn, alert_id, evidence)
 
 
-async def _record_failed_attempt(conn, alert_id: int, evidence: dict, error: str) -> bool:
+async def _gather_providers(conn, ip: str) -> tuple[dict[str, dict | None], list[str], dict[str, str]]:
+    """Looks each provider up on its own.
+
+    Returns (data, unconfigured, failures). Awaiting them together meant one
+    provider being unreachable threw away what the others had already returned
+    — including the country code `foreign_geo` needs — so an alert from a known
+    bad foreign IP scored as if nothing were known about it. A provider that is
+    down now costs only its own signals.
+    """
+    data: dict[str, dict | None] = {}
+    unconfigured: list[str] = []
+    failures: dict[str, str] = {}
+    for name, query_fn in _PROVIDERS:
+        try:
+            result = await _get_or_fetch(conn, ip, name, query_fn)
+        except ProviderError as exc:
+            data[name], failures[name] = None, str(exc)
+            continue
+        except Exception as exc:  # noqa: BLE001 - one provider must not stop the rest
+            logger.exception("enrichment lookup failed for ip=%s provider=%s", ip, name)
+            data[name], failures[name] = None, type(exc).__name__
+            continue
+        if result is None:          # no API key configured for this provider
+            unconfigured.append(name)
+        data[name] = result
+    return data, unconfigured, failures
+
+
+async def _record_failed_attempt(conn, alert_id: int, evidence: dict, error: str,
+                                 signals: list[str] | None = None) -> bool:
     """Schedules a retry. Returns True when that was the last allowed attempt
-    and the alert has been marked checked instead."""
+    and the alert has been marked checked instead. `signals` are the ones the
+    providers that *did* answer earned, and survive giving up on the rest."""
     attempts = int(evidence.get("enrichment_attempts") or 0) + 1
     evidence["enrichment_attempts"] = attempts
     evidence["enrichment_last_error"] = error
@@ -134,7 +164,8 @@ async def _record_failed_attempt(conn, alert_id: int, evidence: dict, error: str
                    alert_id, attempts, MAX_LOOKUP_ATTEMPTS, error)
 
     if attempts >= MAX_LOOKUP_ATTEMPTS:
-        await _mark_checked(conn, alert_id, evidence, signals=[], reason="provider_unavailable")
+        await _mark_checked(conn, alert_id, evidence,
+                            signals=list(signals or []), reason="provider_unavailable")
         return True
 
     retry_at = datetime.now(timezone.utc) + timedelta(minutes=2 ** attempts)
@@ -174,23 +205,12 @@ async def run_all(conn) -> dict[str, int]:
             continue  # left unchecked; a later tick picks it up
         lookups += 1
 
-        try:
-            provider_data = {name: await _get_or_fetch(conn, ip, name, fn) for name, fn in _PROVIDERS}
-        except ProviderError as exc:
-            if await _record_failed_attempt(conn, row["id"], evidence, str(exc)):
-                checked += 1
-            else:
-                retry_scheduled += 1
-            continue
-        except Exception:
-            logger.exception("enrichment lookup failed for alert_id=%s ip=%s", row["id"], ip)
-            continue
+        provider_data, unconfigured, failures = await _gather_providers(conn, ip)
 
         geo_signals, country, geo_skipped = await _foreign_geo(conn, ip, provider_data)
         if geo_skipped:
             evidence["enrichment_context_skipped"] = [geo_skipped]
 
-        unconfigured = [name for name, data in provider_data.items() if data is None]
         if len(unconfigured) == len(provider_data) and not geo_signals:
             await _mark_checked(conn, row["id"], evidence, signals=[], reason="no threat-intel providers configured")
             checked += 1
@@ -211,12 +231,45 @@ async def run_all(conn) -> dict[str, int]:
         if suppressed:
             evidence["enrichment_suppressed"] = suppressed
 
+        # The score is always rebuilt from the alert's pre-enrichment total, not
+        # added to its running one. Partial results can therefore be applied now
+        # and recomputed after a retry without counting a signal twice.
+        base = evidence.get("enrichment_base_score")
+        if base is None:
+            base = row["threat_score"] or 0
+            evidence["enrichment_base_score"] = base
+        bonus = sum(THREAT_WEIGHTS.get(s, 0) for s in signals)
+        new_score = min(100, base + bonus)
+        # Escalation only: the alert already carries its rule's minimum
+        # severity, which a higher score must never drop below.
+        new_severity = max_severity(row["severity"], severity_for_score(new_score))
+
+        if failures:
+            # Keep what the providers that answered earned, and come back for
+            # the rest. Without this an outage at one provider left the alert
+            # with nothing, even when another had already named the IP as bad.
+            evidence["enrichment_signals"] = signals
+            evidence["enrichment_pending_providers"] = sorted(failures)
+            await conn.execute(
+                "UPDATE alerts SET threat_score = $2, severity = $3 WHERE id = $1",
+                row["id"], new_score, new_severity,
+            )
+            gave_up = await _record_failed_attempt(
+                # Provider errors already name their provider.
+                conn, row["id"], evidence,
+                "; ".join(err for _, err in sorted(failures.items())),
+                signals=signals,
+            )
+            if gave_up:
+                checked += 1
+            else:
+                retry_scheduled += 1
+            if signals:
+                escalated += 1
+            continue
+
+        evidence.pop("enrichment_pending_providers", None)
         if signals:
-            bonus = sum(THREAT_WEIGHTS.get(s, 0) for s in signals)
-            new_score = min(100, row["threat_score"] + bonus)
-            # Escalation only: the alert already carries its rule's minimum
-            # severity, which a higher score must never drop below.
-            new_severity = max_severity(row["severity"], severity_for_score(new_score))
             evidence["enrichment_checked"] = True
             evidence["enrichment_signals"] = signals
             evidence.pop("enrichment_next_attempt_at", None)

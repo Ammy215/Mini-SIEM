@@ -333,3 +333,24 @@ than N days ahead of ingest time, or before some floor, is clamped to
 in the batch's skip summary). Deferred because choosing N is a policy decision
 that depends on the log sources in use, and clamping silently would hide a
 genuine clock problem the operator should see.
+
+### 4.14 IP Intel queries its three providers one after another
+
+`routers/enrich.py::enrich_ip` loops over AbuseIPDB, OTX and IPInfo awaiting
+each in turn, so the response takes the *sum* of the three lookups rather than
+the longest. It only shows when a provider is slow, but then it shows badly:
+with OTX unreachable and its 10-second timeout expiring on every call, an IP
+Intel lookup took ~11 seconds even though the other two answered from
+`ioc_cache` in milliseconds.
+
+`asyncio.gather` over the three would cap it at the slowest single provider.
+The reason it is deferred rather than done: the alert-enrichment path
+(`detection/enrich_alerts.py`) deliberately keeps its lookups sequential so a
+burst of new alerts can't fire three times the requests at a free-tier quota in
+one go, and the per-tick cap (`LOOKUPS_PER_TICK`) assumes that. Making the two
+paths differ in concurrency is a decision worth taking deliberately, with the
+quota maths done, rather than as a latency tweak.
+
+Note this is only about *when* the requests are issued. A provider that fails
+no longer costs the others their results — that was fixed alongside this note,
+in `_gather_providers`.

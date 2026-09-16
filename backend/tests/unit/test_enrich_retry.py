@@ -149,3 +149,62 @@ async def test_lookups_per_tick_are_capped_and_the_rest_wait(conn, monkeypatch):
     assert len(looked_up) == 2
     unchecked = [a for a in alert_ids if "enrichment_checked" not in await _evidence(conn, a)]
     assert len(unchecked) == 1
+
+
+async def test_a_failed_provider_does_not_discard_the_working_one(conn, monkeypatch):
+    """One provider being down used to abort the whole enrichment, throwing away
+    what the others had already returned. The alert kept nothing at all."""
+    _use_providers(monkeypatch, _known_bad, _down)
+    alert_id = await _new_alert(conn)
+
+    await enrich_alerts.run_all(conn)
+
+    evidence = await _evidence(conn, alert_id)
+    # AbuseIPDB answered, so its signal lands now...
+    assert evidence["enrichment_signals"] == ["known_bad_ip"]
+    assert await conn.fetchval("SELECT threat_score FROM alerts WHERE id = $1", alert_id) == 50
+    # ...and OTX is still owed, so the alert is not finished with.
+    assert evidence["enrichment_pending_providers"] == ["otx"]
+    assert "enrichment_checked" not in evidence
+    assert "enrichment_next_attempt_at" in evidence
+
+
+async def test_retrying_a_partial_enrichment_does_not_double_count(conn, monkeypatch):
+    """The score is rebuilt from the pre-enrichment total each pass, so a signal
+    already applied cannot be added a second time when the retry lands."""
+    _use_providers(monkeypatch, _known_bad, _down)
+    alert_id = await _new_alert(conn)
+    await enrich_alerts.run_all(conn)
+    assert await conn.fetchval("SELECT threat_score FROM alerts WHERE id = $1", alert_id) == 50
+
+    # OTX comes back, and reports pulses that corroborate AbuseIPDB.
+    async def _pulses(ip):
+        return {"pulse_count": 5}
+
+    _use_providers(monkeypatch, _known_bad, _pulses)
+    await _make_retry_due(conn, alert_id)
+    await enrich_alerts.run_all(conn)
+
+    evidence = await _evidence(conn, alert_id)
+    assert evidence["enrichment_checked"] is True
+    assert sorted(evidence["enrichment_signals"]) == ["known_bad_ip", "otx_pulse_match"]
+    assert "enrichment_pending_providers" not in evidence
+    # 30 base + 20 known_bad_ip + 15 otx_pulse_match — not 50 + 35.
+    assert await conn.fetchval("SELECT threat_score FROM alerts WHERE id = $1", alert_id) == 65
+
+
+async def test_giving_up_on_a_dead_provider_keeps_what_the_others_found(conn, monkeypatch):
+    """After the last attempt the alert is marked checked, but the signals the
+    providers that did answer earned must survive."""
+    _use_providers(monkeypatch, _known_bad, _down)
+    alert_id = await _new_alert(conn)
+
+    for _ in range(enrich_alerts.MAX_LOOKUP_ATTEMPTS):
+        await enrich_alerts.run_all(conn)
+        await _make_retry_due(conn, alert_id)
+
+    evidence = await _evidence(conn, alert_id)
+    assert evidence["enrichment_checked"] is True
+    assert evidence["enrichment_skipped_reason"] == "provider_unavailable"
+    assert evidence["enrichment_signals"] == ["known_bad_ip"]
+    assert await conn.fetchval("SELECT threat_score FROM alerts WHERE id = $1", alert_id) == 50
