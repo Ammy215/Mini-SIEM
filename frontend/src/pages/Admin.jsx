@@ -182,7 +182,7 @@ export default function Admin() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Admin</h1>
+      <h1 className="text-display text-2xl">Admin</h1>
 
       <div className="flex gap-1 border-b border-border">
         {["users", "audit"].map((t) => (

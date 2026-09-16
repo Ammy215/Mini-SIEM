@@ -36,7 +36,7 @@ export default function Incidents() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Incidents</h1>
+      <h1 className="text-display text-2xl">Incidents</h1>
       <p className="text-sm text-muted-foreground -mt-4">
         Related alerts from the same source, correlated within a 60-minute window into a single campaign.
       </p>

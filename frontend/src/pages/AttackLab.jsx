@@ -49,7 +49,7 @@ export default function AttackLab() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <FlaskConical className="h-6 w-6 text-amber" />
-        <h1 className="text-2xl font-bold">Attack Lab</h1>
+        <h1 className="text-display text-2xl">Attack Lab</h1>
       </div>
       <p className="text-sm text-muted-foreground max-w-2xl">
         Dev-only, intentionally vulnerable practice routes. Every request here is

@@ -27,7 +27,7 @@ export default function IpIntel() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">IP Intel</h1>
+      <h1 className="text-display text-2xl">IP Intel</h1>
 
       <form onSubmit={handleSubmit} className="flex gap-2 max-w-md">
         <Input

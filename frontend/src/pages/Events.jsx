@@ -72,7 +72,7 @@ export default function Events() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Events</h1>
+      <h1 className="text-display text-2xl">Events</h1>
 
       {batchId && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">

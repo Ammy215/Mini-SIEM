@@ -57,10 +57,89 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    /* Inter's defaults leave contextual alternates off; on at small sizes it
+       keeps the UI text from looking mechanical. */
+    font-feature-settings: "cv02", "cv03", "cv04", "calt";
   }
   code,
   .font-mono {
     font-feature-settings: "tnum";
+  }
+
+  /* One visible focus treatment for everything reachable by keyboard, in the
+     product's own cyan rather than the browser default. */
+  :focus-visible {
+    outline: 2px solid hsl(190 100% 50% / 0.9);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: hsl(190 100% 50% / 0.26);
+    color: hsl(214 32% 96%);
+  }
+
+  /* The default scrollbar is a bright slab against a near-black console.
+     Firefox takes the two-value form; WebKit needs the pseudo-elements. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(216 40% 26%) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(216 40% 24%);
+    border-radius: 99px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(216 40% 34%);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+@layer components {
+  /* Display type: one step tighter and heavier than body copy, for the few
+     places a heading should carry weight (sign-in, page titles). */
+  .text-display {
+    @apply font-extrabold tracking-[-0.03em];
+    text-wrap: balance;
+  }
+
+  /* Two stacked ambient layers used behind the sign-in panel. Kept at low
+     alpha so they read as depth, never as pattern competing with the type. */
+  .aurora {
+    background:
+      radial-gradient(60% 55% at 18% 12%, hsl(190 100% 50% / 0.14), transparent 70%),
+      radial-gradient(50% 50% at 88% 78%, hsl(258 90% 66% / 0.13), transparent 72%),
+      radial-gradient(70% 60% at 50% 110%, hsl(345 100% 60% / 0.07), transparent 70%);
+  }
+
+  .grid-plane {
+    background-image:
+      linear-gradient(to right, hsl(216 48% 20% / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(216 48% 20% / 0.5) 1px, transparent 1px);
+    background-size: 56px 56px;
+    /* fades the grid out toward the edges so it has no visible border */
+    mask-image: radial-gradient(75% 65% at 50% 45%, #000 40%, transparent 100%);
   }
 }
 

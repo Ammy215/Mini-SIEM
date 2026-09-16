@@ -180,7 +180,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-display text-2xl">Dashboard</h1>
         <TimeRangePicker key={range.preset} range={range} />
       </div>
 

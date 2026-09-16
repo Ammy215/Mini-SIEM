@@ -98,7 +98,7 @@ export default function Rules() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Detection Rules</h1>
+        <h1 className="text-display text-2xl">Detection Rules</h1>
         {isAdmin && (
           <Button onClick={() => setEditing("new")}>
             <Plus className="h-4 w-4" /> New rule
