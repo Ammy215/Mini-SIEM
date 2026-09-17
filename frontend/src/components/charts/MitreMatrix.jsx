@@ -1,3 +1,4 @@
+import { ScrollShadow } from "@/components/ScrollShadow";
 import { COLORS, tint } from "@/lib/colors";
 
 function TechniqueCell({ technique }) {
@@ -36,7 +37,7 @@ function TechniqueCell({ technique }) {
 export function MitreMatrix({ tactics }) {
   if (!tactics?.length) return <p className="text-sm text-muted-foreground">No techniques to show.</p>;
   return (
-    <div className="overflow-x-auto pb-1">
+    <ScrollShadow contentClassName="pb-1">
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${tactics.length}, minmax(9.5rem, 1fr))` }}>
         {tactics.map((tactic) => (
           <div key={tactic.tactic} className="space-y-2">
@@ -49,6 +50,6 @@ export function MitreMatrix({ tactics }) {
           </div>
         ))}
       </div>
-    </div>
+    </ScrollShadow>
   );
 }

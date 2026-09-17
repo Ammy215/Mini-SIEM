@@ -7,13 +7,20 @@ import { COLORS, SEVERITY_COLORS, tint } from "@/lib/colors";
 import { alpha2ForFeature, countryName } from "@/lib/countryCodes";
 
 const WIDTH = 960;
-const HEIGHT = 480;
+// Fitting the whole sphere left a quarter of the card as empty ocean and
+// Antarctica. The extent below stops at 58°S — south of every populated place
+// a source IP resolves to — and the shorter box is what removes the dead space.
+const HEIGHT = 380;
 const LAND = "hsl(216 48% 15%)";
 const BORDER = "hsl(216 48% 24%)";
 
-const projection = geoNaturalEarth1().fitExtent([[8, 8], [WIDTH - 8, HEIGHT - 8]], { type: "Sphere" });
+const INHABITED = {
+  type: "Polygon",
+  coordinates: [[[-180, 84], [180, 84], [180, -58], [-180, -58], [-180, 84]]],
+};
+
+const projection = geoNaturalEarth1().fitExtent([[8, 6], [WIDTH - 8, HEIGHT - 6]], INHABITED);
 const path = geoPath(projection);
-const SPHERE = path({ type: "Sphere" });
 
 // Where a country's bubble goes: the middle of its largest landmass, so the US
 // bubble sits on the mainland instead of being pulled toward Alaska.
@@ -49,10 +56,17 @@ export default function AttackMap({ countries, metric }) {
   const hoveredCountry = hovered ? byCode.get(hovered) : null;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(12rem,1fr)]">
-      <div className="relative">
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-auto w-full" role="img" aria-label={`Attack map: ${metric} by source country`}>
-          <path d={SPHERE} style={{ fill: "hsl(217 68% 7%)", stroke: "hsl(216 48% 20%)" }} />
+    // One surface: the map at a fixed height, and the country list in the width
+    // the map no longer needs. An overlay list hid East Asia and Australia; a
+    // separate column left the map narrow and the column mostly empty.
+    <div className="flex flex-col overflow-hidden rounded-lg border border-border/60 bg-[hsl(217_68%_7%)] sm:h-[21rem] sm:flex-row">
+      <div className="relative flex min-w-0 flex-1 items-center justify-center p-2">
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          className="h-auto w-full sm:h-full"
+          role="img"
+          aria-label={`Attack map: ${metric} by source country`}
+        >
           {SHAPES.map((shape, i) => {
             const c = shape.code ? byCode.get(shape.code) : null;
             return (
@@ -74,15 +88,20 @@ export default function AttackMap({ countries, metric }) {
                 cx={shape.anchor[0]}
                 cy={shape.anchor[1]}
                 r={3 + 13 * share(c.count)}
-                style={{ fill: tint(color, 55), stroke: color, strokeWidth: 1 }}
+                style={{
+                  fill: tint(color, hovered === shape.code ? 75 : 55),
+                  stroke: color,
+                  strokeWidth: hovered === shape.code ? 2 : 1,
+                }}
                 onMouseEnter={() => setHovered(shape.code)}
                 onMouseLeave={() => setHovered(null)}
               />
             );
           })}
         </svg>
+
         {hoveredCountry && (
-          <div className="pointer-events-none absolute left-2 top-2 rounded-md border border-border bg-popover px-3 py-2 text-xs shadow">
+          <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-lg">
             <p className="font-medium">
               {countryName(hovered)} <span className="font-mono text-muted-foreground">{hovered}</span>
             </p>
@@ -92,23 +111,45 @@ export default function AttackMap({ countries, metric }) {
         )}
       </div>
 
-      <div className="space-y-1 text-sm">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Top countries</p>
-        {countries.length === 0 && <p className="text-muted-foreground">No located {metric} in this range.</p>}
-        {countries.slice(0, 12).map((c) => (
-          <div
-            key={c.country}
-            className="flex items-center justify-between gap-2 border-b border-border py-1 last:border-0"
-            onMouseEnter={() => setHovered(c.country)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            <span className="min-w-0 truncate">
-              {countryName(c.country)} <span className="font-mono text-xs text-muted-foreground">{c.country}</span>
-              {!ON_MAP.has(c.country) && <span className="ml-1 text-[10px] text-muted-foreground">(too small for the map)</span>}
-            </span>
-            <span className="font-mono tabular-nums">{c.count.toLocaleString()}</span>
+      <div className="flex shrink-0 flex-col border-t border-border/60 p-3 sm:w-64 sm:border-l sm:border-t-0">
+        <div className="mb-2 flex items-baseline justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Top countries</p>
+          {countries.length > 0 && (
+            <p className="font-mono text-[10px] text-muted-foreground">{metric}</p>
+          )}
+        </div>
+        {countries.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No located {metric} in this range.</p>
+        ) : (
+          <div className="min-h-0 flex-1 space-y-px overflow-y-auto">
+            {countries.slice(0, 12).map((c) => {
+              const color = bubbleColor(c);
+              return (
+                <button
+                  type="button"
+                  key={c.country}
+                  onMouseEnter={() => setHovered(c.country)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(c.country)}
+                  onBlur={() => setHovered(null)}
+                  className={`flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-xs transition-colors ${
+                    hovered === c.country ? "bg-primary/10" : "hover:bg-muted/60"
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {countryName(c.country)}{" "}
+                    <span className="font-mono text-[10px] text-muted-foreground">{c.country}</span>
+                    {!ON_MAP.has(c.country) && (
+                      <span className="ml-1 text-[10px] text-muted-foreground">(too small to shade)</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums">{c.count.toLocaleString()}</span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

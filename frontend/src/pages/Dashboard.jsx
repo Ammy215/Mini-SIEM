@@ -8,6 +8,8 @@ import { LogText } from "@/components/LogText";
 import { TimeRangePicker, useTimeRange } from "@/components/TimeRangePicker";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { MitreMatrix } from "@/components/charts/MitreMatrix";
+import { SeverityBar } from "@/components/charts/SeverityBar";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { COLORS, SEVERITY_COLORS } from "@/lib/colors";
 import {
   useAlerts, useBreakdown, useDashboardStats, useEvents, useGeoStats, useMitreCoverage, useTimeline, useTopAttackers,
@@ -58,24 +60,28 @@ function AttackOrigins({ range }) {
   );
 }
 
-function StatCard({ label, value, icon: Icon, index, hint }) {
+// Each card's footer shows what that number actually is: a trend for the two
+// counts over the selected range, the severity split for open alerts. Open
+// incidents has neither in the API, so it gets no footer rather than a made-up one.
+function StatCard({ label, value, icon: Icon, index, hint, accent = COLORS.cyan, children }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3 }}
-      whileHover={{ y: -2 }}
+      className="h-full"
     >
-      <Card className="py-0 transition-colors hover:border-primary/40">
-        <CardContent className="flex items-center justify-between p-5">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</p>
-            <p className="text-3xl font-bold font-mono mt-1.5 tabular-nums">{value?.toLocaleString() ?? "—"}</p>
-            {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
+      <Card className="h-full py-0 transition-colors hover:border-primary/40">
+        <CardContent className="flex h-full flex-col p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className="mt-1.5 font-mono text-3xl font-bold tabular-nums">{value?.toLocaleString() ?? "—"}</p>
+              {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
+            </div>
+            <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: accent }} />
           </div>
-          <div className="rounded-lg bg-primary/10 p-2.5">
-            <Icon className="h-5 w-5 text-primary" />
-          </div>
+          {children && <div className="mt-auto pt-4">{children}</div>}
         </CardContent>
       </Card>
     </motion.div>
@@ -173,6 +179,9 @@ export default function Dashboard() {
   const severities = Object.entries(breakdown?.alerts_by_severity ?? {}).map(([name, value]) => ({
     name, value, color: SEVERITY_COLORS[name],
   }));
+  // The same buckets the Activity chart draws, so the card trend and the chart agree.
+  const eventSeries = (timeline?.buckets ?? []).map((b) => b.event_count);
+  const alertSeries = (timeline?.buckets ?? []).map((b) => b.alert_count);
   const totalTechniques = mitre?.tactics
     ? new Set(mitre.tactics.flatMap((t) => t.techniques.map((tech) => tech.id))).size
     : 0;
@@ -185,25 +194,19 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Events" value={stats?.events_in_range} icon={Clock} index={0} hint={range.label} />
-        <StatCard label="Alerts" value={stats?.alerts_in_range} icon={Activity} index={1} hint={range.label} />
-        <StatCard label="Open Alerts" value={stats?.open_alerts} icon={ShieldAlert} index={2} hint="right now" />
-        <StatCard label="Open Incidents" value={stats?.open_incidents} icon={FolderOpen} index={3} hint="right now" />
+        <StatCard label="Events" value={stats?.events_in_range} icon={Clock} index={0} hint={range.label}>
+          <Sparkline values={eventSeries} color={COLORS.cyan} className="w-full" />
+        </StatCard>
+        <StatCard label="Alerts" value={stats?.alerts_in_range} icon={Activity} index={1} hint={range.label} accent={COLORS.red}>
+          <Sparkline values={alertSeries} color={COLORS.red} className="w-full" />
+        </StatCard>
+        {/* This bar replaces the old separate "open alerts by severity" row:
+            the split belongs on the number it explains. */}
+        <StatCard label="Open Alerts" value={stats?.open_alerts} icon={ShieldAlert} index={2} hint="right now" accent={COLORS.amber}>
+          <SeverityBar counts={stats?.alerts_by_severity} />
+        </StatCard>
+        <StatCard label="Open Incidents" value={stats?.open_incidents} icon={FolderOpen} index={3} hint="right now" accent={COLORS.purple} />
       </div>
-
-      {stats?.alerts_by_severity && (
-        <div className="flex gap-3 flex-wrap items-center">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">
-            Open alerts by severity · right now
-          </span>
-          {Object.entries(stats.alerts_by_severity).map(([severity, count]) => (
-            <div key={severity} className="flex items-center gap-2">
-              <SeverityBadge severity={severity} />
-              <span className="text-sm font-mono text-muted-foreground">{count}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       <Timeline timeline={timeline} label={range.label} />
 
