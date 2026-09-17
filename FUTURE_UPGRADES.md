@@ -354,3 +354,12 @@ quota maths done, rather than as a latency tweak.
 Note this is only about *when* the requests are issued. A provider that fails
 no longer costs the others their results — that was fixed alongside this note,
 in `_gather_providers`.
+
+### 4.15 The Incidents severity bar counts only the incidents on the page
+
+The "By severity" bar on the Incidents page is worked out in the browser from
+the incidents it has loaded, which is the latest 50. When more exist it is
+labelled "latest 50 of N", so it doesn't claim to be a total. The API has no
+way to return severity counts across all incidents. The proper fix is a small
+stats endpoint (for example `GET /api/stats/incidents`, returning counts by
+severity and status) for the bar to read instead.
