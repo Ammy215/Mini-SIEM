@@ -390,3 +390,34 @@ Accepted for now because the global ceiling (300/min) and the ingest limit still
 apply per claimed address, the lockout counter on the user row is per account
 rather than per IP, and the deployed entry point people actually use is the
 Vercel domain.
+
+### 4.17 "Login after repeated failures" fires on people who fumble their password
+
+Measured, not theorised: over 100,000 synthetic benign events spanning 14 days,
+running every rule across the whole window raised **two** alerts that no attacker
+caused, both from `brute_force_then_success` — "Login succeeded after repeated
+failures from 10.0.0.11". No other rule raised anything.
+
+The rule asks for 5 or more failed logins from one address within 10 minutes,
+followed by a success. A person at their own desk who mistypes a password five
+times in ten minutes and then gets in matches that exactly. In the dataset each
+user averaged 2.6 failed logins an hour, which makes a five-in-ten-minutes run
+turn up about 1.7 times in a fortnight — the two observed alerts are the rule
+behaving as written, not a defect.
+
+It is worth knowing because this is the classic false-positive source in real
+SIEMs, and there are three ways to spend the sensitivity:
+
+- **Raise the count** (5 → 8 or 10 failures). Cheapest, and still catches the
+  noisy guessing that most attacks look like. Misses careful low-volume guessing.
+- **Require the address to be new for that account.** A failure run from the
+  workstation someone signs in from every day is ordinary; the same run from an
+  address that account has never used is not. Needs a per-account history of
+  source addresses, which the schema does not keep today.
+- **Leave it and triage.** Two alerts per 100k events is a low rate, and a
+  "critical" that turns out to be a colleague fumbling is a cheap five-second
+  dismissal — as long as the evidence panel makes that obvious, which it does.
+
+Nothing is changed for now: the threshold is part of the shipped rule set, and
+choosing among these is a tuning decision for whoever runs the system, not a bug
+to fix silently. The number is recorded here so the choice can be made with data.
