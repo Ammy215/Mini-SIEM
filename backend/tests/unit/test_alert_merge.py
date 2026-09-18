@@ -301,3 +301,33 @@ async def test_unconfigured_business_hours_are_recorded_as_skipped(conn):
 
     assert alert["threat_score"] == 15
     assert evidence["context_skipped"] == ["after_hours: business hours not configured"]
+
+
+async def test_an_old_burst_does_not_merge_into_an_alert_raised_today(conn):
+    """Detection over a past range must not fold months-old events into a live alert.
+
+    The merge window was checked in one direction only — "is the open alert too
+    old for these events?" — so analysing an upload from March found the alert
+    raised today for the same address and merged into it. Because merging widens
+    the window with LEAST/GREATEST, the result was a single alert spanning six
+    months, and the historical campaign vanished into an unrelated live one.
+    """
+    await _enable(conn, "xss-http-001")
+    ip = "203.0.113.178"
+
+    await _xss_hits(conn, ip, 3)                                   # today
+    assert (await signature.run_all(conn))["xss-http-001"] == 1
+    [live] = await _xss_alerts(conn, ip)
+
+    months_ago = _now() - timedelta(days=180)
+    await _xss_hits(conn, ip, 3, start=months_ago)
+    scope = rule_engine.Scope(months_ago - timedelta(hours=1), months_ago + timedelta(hours=1))
+    assert (await rule_engine.run_rules(conn, "signature", scope))["xss-http-001"] == 1
+
+    alerts = await _xss_alerts(conn, ip)
+    assert len(alerts) == 2, "the old burst should be its own alert, not folded into today's"
+    old = next(a for a in alerts if a["id"] != live["id"])
+    assert old["last_event_time"] < live["first_event_time"], "the two alerts must not overlap in time"
+    still_live = next(a for a in alerts if a["id"] == live["id"])
+    assert still_live["first_event_time"] == live["first_event_time"], \
+        "today's alert must not have been stretched backwards"

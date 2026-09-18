@@ -24,16 +24,23 @@ async def upsert_alert(
     origin: str = "live", batch_id=None,
 ) -> tuple[int, bool]:
     """Returns (alert id, whether a new alert was created)."""
+    # Both bounds matter. Checking only that the open alert is not too OLD let
+    # detection over a past range fold a months-old burst into an alert raised
+    # today for the same address: the merge widens the window with LEAST/GREATEST,
+    # so one alert ended up spanning March to September and the historical
+    # campaign disappeared into an unrelated live one. The two windows now have
+    # to be within merge_minutes of each other in either direction.
     existing = await conn.fetchrow(
         """
         SELECT id, evidence FROM alerts
         WHERE rule_id = $1 AND group_key = $2 AND status = 'open'
-          AND last_event_time >= $3::timestamptz - make_interval(mins => $4)
+          AND last_event_time  >= $3::timestamptz - make_interval(mins => $4)
+          AND first_event_time <= $5::timestamptz + make_interval(mins => $4)
         ORDER BY last_event_time DESC
         LIMIT 1
         FOR UPDATE
         """,
-        rule["id"], group_key, first_time, merge_minutes,
+        rule["id"], group_key, first_time, merge_minutes, last_time,
     )
     if existing is not None:
         merged = merge_evidence(json.loads(existing["evidence"]) if existing["evidence"] else {}, evidence)

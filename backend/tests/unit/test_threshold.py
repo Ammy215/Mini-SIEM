@@ -35,7 +35,15 @@ async def test_brute_force_fires_on_eleven_failed_logins(conn):
     results = await threshold.run_all(conn)
     assert results["brute_force"] == 1
 
-    alert = await conn.fetchrow("SELECT * FROM alerts WHERE rule_id = (SELECT id FROM rules WHERE rule_key = 'brute_force')")
+    # Fetch this test's own alert. Without the address in the WHERE clause the
+    # query returns whichever brute-force alert the database happens to hold
+    # first, so the test only passed on an empty one.
+    alert = await conn.fetchrow(
+        "SELECT * FROM alerts WHERE rule_id = (SELECT id FROM rules WHERE rule_key = 'brute_force') "
+        "AND source_ip = $1::inet ORDER BY id DESC LIMIT 1",
+        ip,
+    )
+    assert alert is not None, f"no brute-force alert for {ip}"
     assert alert["mitre_technique"] == "T1110"
     assert str(alert["source_ip"]) == ip
 
