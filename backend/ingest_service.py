@@ -33,7 +33,9 @@ def _normalised_url(event: dict) -> tuple[str | None, dict | None]:
     """
     url = event.get("url")
     raw = event.get("raw")
-    if not url:
+    # Parsers coerce this to a string, but this is the one place every write path
+    # passes through, so it does not assume they did.
+    if not url or not isinstance(url, str):
         return url, raw
     decoded = decode_url(url)
     if decoded == url:

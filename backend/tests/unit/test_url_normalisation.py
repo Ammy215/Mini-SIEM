@@ -52,6 +52,11 @@ def test_events_without_a_url_are_unaffected():
     assert _normalised_url({"source_type": "ssh"}) == (None, None)
 
 
+def test_a_url_that_is_not_a_string_does_not_crash_the_write():
+    """Parsers coerce it, but the shared writer must not depend on that."""
+    assert _normalised_url({"url": 8080}) == (8080, None)
+
+
 def test_the_row_built_for_insert_carries_the_decoded_url():
     row = _event_to_row({"source_type": "nginx", "url": "/p?id=%27+OR+1%3d1"}, None)
     assert row[URL_COLUMN] == "/p?id=' OR 1=1"
