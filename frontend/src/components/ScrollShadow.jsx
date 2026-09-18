@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * way. This fades whichever edge still has content beyond it, so the clipping
  * reads as "scroll" rather than "end".
  */
-export function ScrollShadow({ children, className, contentClassName }) {
+export function ScrollShadow({ children, className, contentClassName, label }) {
   const ref = useRef(null);
   const [edges, setEdges] = useState({ left: false, right: false });
 
@@ -40,7 +40,15 @@ export function ScrollShadow({ children, className, contentClassName }) {
 
   return (
     <div className={cn("relative", className)}>
-      <div ref={ref} className={cn("overflow-x-auto", contentClassName)}>
+      {/* Focusable so the content beyond the edge can be reached with the arrow
+          keys — a mouse wheel or a trackpad is not the only way people scroll. */}
+      <div
+        ref={ref}
+        tabIndex={0}
+        role="group"
+        aria-label={label}
+        className={cn("overflow-x-auto", contentClassName)}
+      >
         {children}
       </div>
 

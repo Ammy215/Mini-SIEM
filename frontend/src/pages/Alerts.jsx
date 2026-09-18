@@ -98,6 +98,7 @@ export default function Alerts() {
 
       <div className="flex flex-wrap gap-3 items-center">
         <select
+          aria-label="Filter by status"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={status}
           onChange={(e) => {
@@ -150,8 +151,21 @@ export default function Alerts() {
               return (
                 <Fragment key={alert.id}>
                   <TableRow className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : alert.id)}>
+                    {/* Clicking anywhere on the row still works; this button is what
+                        makes the evidence reachable from the keyboard. */}
                     <TableCell>
-                      {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? "Hide" : "Show"} evidence for ${alert.title}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpanded(isOpen ? null : alert.id);
+                        }}
+                        className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                      >
+                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
                     </TableCell>
                     <TableCell
                       className="font-mono text-xs whitespace-nowrap"

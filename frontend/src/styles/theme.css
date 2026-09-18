@@ -27,7 +27,11 @@
     --secondary-foreground: hsl(214 32% 91%);
 
     --muted: hsl(216 56% 13%);
-    --muted-foreground: hsl(215 16% 47%);
+    /* Lightness raised from 47%: at 47% this sits at 3.8:1 on the sidebar and
+       3.5:1 on a card, under the 4.5:1 minimum for body text — the inactive
+       navigation links and every piece of secondary copy failed it. Same hue and
+       saturation, so secondary text still reads as secondary. */
+    --muted-foreground: hsl(215 16% 62%);
 
     --accent: hsl(258 90% 66%);
     --accent-foreground: hsl(214 32% 91%);
@@ -47,6 +51,10 @@
     --siem-green: hsl(152 100% 50%);
     --amber: hsl(43 100% 50%);
     --siem-red: hsl(345 100% 60%);
+    /* The same red, lightened for small text sitting on its own tint — at 60%
+       it measures under 4:1 there. Fills, borders and chart series keep the
+       colour above; only ink uses this. */
+    --siem-red-ink: hsl(345 100% 74%);
     --purple: hsl(258 90% 66%);
   }
 }
@@ -143,13 +151,17 @@
   }
 }
 
+/* A ring that breathes outward, not a fade. Fading the badge fades its text with
+   it: at the midpoint the label measured 3.5:1 against the page, well under the
+   4.5:1 minimum, so the most urgent badge in the app was the hardest to read. */
 @keyframes pulse-critical {
   0%,
   100% {
-    opacity: 1;
+    box-shadow: 0 0 0 0 hsl(345 100% 60% / 0.5);
   }
-  50% {
-    opacity: 0.5;
+  70%,
+  to {
+    box-shadow: 0 0 0 5px hsl(345 100% 60% / 0);
   }
 }
 

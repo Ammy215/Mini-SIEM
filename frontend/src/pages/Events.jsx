@@ -96,6 +96,7 @@ export default function Events() {
       <div className="space-y-3">
         <div className="flex flex-wrap gap-3 items-center">
           <select
+            aria-label="Filter by source type"
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             value={sourceType}
             onChange={(e) => {

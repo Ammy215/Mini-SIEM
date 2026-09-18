@@ -22,16 +22,21 @@ export function DonutChart({ data, emptyText = "Nothing in this range" }) {
   return (
     <div className="flex items-center gap-4">
       <div className="relative h-36 w-36 shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={slices} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="100%" paddingAngle={2} stroke="none" isAnimationActive={false}>
-              {slices.map((d, i) => (
-                <Cell key={d.name} fill={colorOf(d, i)} />
-              ))}
-            </Pie>
-            <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "hsl(214 32% 91%)" }} />
-          </PieChart>
-        </ResponsiveContainer>
+        <div className="h-full w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={slices} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="100%" paddingAngle={2} stroke="none" isAnimationActive={false}>
+                {/* recharts gives each slice an image role, and an image with no
+                    text alternative is a failure even when the list beside it says
+                    the same thing. Naming each slice costs nothing and reads well. */}
+                {slices.map((d, i) => (
+                  <Cell key={d.name} fill={colorOf(d, i)} aria-label={`${d.name}: ${d.value}`} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "hsl(214 32% 91%)" }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-mono text-lg font-bold tabular-nums">{total.toLocaleString()}</span>
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">total</span>

@@ -139,11 +139,24 @@ export default function Incidents() {
                   <Fragment key={incident.id}>
                     <TableRow
                       className="cursor-pointer"
-                      aria-expanded={isOpen}
                       onClick={() => setExpanded(isOpen ? null : incident.id)}
                     >
+                      {/* The row stays clickable for the mouse, but the control that
+                          opens it is a real button: a <tr> is not keyboard reachable,
+                          and aria-expanded is not valid on a plain table row. */}
                       <TableCell>
-                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          aria-label={`${isOpen ? "Hide" : "Show"} details for ${incident.title}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpanded(isOpen ? null : incident.id);
+                          }}
+                          className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                        >
+                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
                       </TableCell>
                       <TableCell className="max-w-xs truncate font-medium"><LogText value={incident.title} /></TableCell>
                       <TableCell className="font-mono">{incident.source_ip ?? "—"}</TableCell>

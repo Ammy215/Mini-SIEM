@@ -76,6 +76,7 @@ export default function Rules() {
               <TableCell><LastRun rule={rule} /></TableCell>
               <TableCell>
                 <Switch
+                  aria-label={`${rule.enabled ? "Disable" : "Enable"} ${rule.title}`}
                   checked={rule.enabled}
                   disabled={!canEdit || toggleRule.isPending}
                   onCheckedChange={() => toggleRule.mutate(rule.id)}

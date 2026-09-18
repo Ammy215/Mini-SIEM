@@ -102,6 +102,15 @@ const tooltipStyle = {
   fontSize: 12,
 };
 
+// Keeps a tick label short enough to fit beside the chart: 2200 -> "2.2k".
+// The tooltip still shows the exact count.
+function compactCount(value) {
+  if (typeof value !== "number") return value;
+  if (value >= 10_000) return `${Math.round(value / 1000)}k`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(value);
+}
+
 function Timeline({ timeline, label }) {
   const spanMs = timeline ? new Date(timeline.end) - new Date(timeline.start) : 0;
   const data = (timeline?.buckets ?? []).map((b) => ({
@@ -125,7 +134,7 @@ function Timeline({ timeline, label }) {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="eventsGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="hsl(190 100% 50%)" stopOpacity={0.45} />
@@ -138,7 +147,13 @@ function Timeline({ timeline, label }) {
               </defs>
               <CartesianGrid strokeDasharray="3 6" stroke="hsl(216 48% 20%)" vertical={false} />
               <XAxis dataKey="time" stroke="hsl(215 16% 47%)" fontSize={11} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={40} />
-              <YAxis stroke="hsl(215 16% 47%)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
+              {/* Counts reach four digits on a busy day. The axis has to be wide
+                  enough to hold the label it prints, or recharts draws it past the
+                  left edge of the chart and every tick above zero is clipped down
+                  to its last character — an axis reading 0, 0, 0, 0, 0 under a
+                  line that is clearly climbing. */}
+              <YAxis stroke="hsl(215 16% 47%)" fontSize={11} tickLine={false} axisLine={false}
+                     allowDecimals={false} width={46} tickFormatter={compactCount} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "hsl(214 32% 91%)" }} />
               <Area type="monotone" dataKey="events" name="Events" stroke="hsl(190 100% 50%)" strokeWidth={2} fill="url(#eventsGradient)" dot={false} activeDot={{ r: 4 }} />
               <Area type="monotone" dataKey="alerts" name="Alerts" stroke="hsl(345 100% 60%)" strokeWidth={2} fill="url(#alertsGradient)" dot={false} activeDot={{ r: 4 }} />

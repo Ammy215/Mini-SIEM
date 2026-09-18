@@ -47,6 +47,7 @@ export default {
         "siem-green": "var(--siem-green)",
         amber: "var(--amber)",
         "siem-red": "var(--siem-red)",
+        "siem-red-ink": "var(--siem-red-ink)",
         purple: "var(--purple)",
       },
       borderRadius: {

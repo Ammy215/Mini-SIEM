@@ -5,7 +5,10 @@ function TechniqueCell({ technique }) {
   const alerted = technique.alert_count > 0;
   const covered = technique.enabled_rules > 0;
   const style = alerted
-    ? { borderColor: tint(COLORS.red, 60), background: tint(COLORS.red, Math.min(12 + technique.alert_count * 4, 35)) }
+    // The tint deepens with the alert count, but only so far: past about a
+    // quarter strength the label and the count on top of it fall under the
+    // contrast minimum, and a heat map nobody can read is worse than a flatter one.
+    ? { borderColor: tint(COLORS.red, 60), background: tint(COLORS.red, Math.min(10 + technique.alert_count * 3, 24)) }
     : covered
       ? { borderColor: tint(COLORS.cyan, 40), background: tint(COLORS.cyan, 6) }
       : undefined;
@@ -20,7 +23,7 @@ function TechniqueCell({ technique }) {
       <p className="leading-snug">{technique.name}</p>
       <p className="mt-1 font-mono text-[11px] tabular-nums">
         {alerted ? (
-          <span className="text-siem-red">
+          <span className="text-siem-red-ink">
             {technique.alert_count} {technique.alert_count === 1 ? "alert" : "alerts"}
           </span>
         ) : covered ? (
@@ -37,7 +40,7 @@ function TechniqueCell({ technique }) {
 export function MitreMatrix({ tactics }) {
   if (!tactics?.length) return <p className="text-sm text-muted-foreground">No techniques to show.</p>;
   return (
-    <ScrollShadow contentClassName="pb-1">
+    <ScrollShadow contentClassName="pb-1" label="MITRE ATT&CK coverage by tactic">
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${tactics.length}, minmax(9.5rem, 1fr))` }}>
         {tactics.map((tactic) => (
           <div key={tactic.tactic} className="space-y-2">

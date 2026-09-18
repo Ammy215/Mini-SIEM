@@ -52,6 +52,11 @@ export default [
       "react/no-unescaped-entities": ["error", { forbid: [">", "}"] }],
       // Leading-underscore names are deliberate "unused on purpose" markers.
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      // A region that scrolls must be focusable, or its hidden content is
+      // unreachable without a mouse — axe flags exactly that as
+      // "scrollable-region-focusable". This rule otherwise forbids the tabIndex
+      // that fixes it, so named group/region containers are allowed to take one.
+      "jsx-a11y/no-noninteractive-tabindex": ["error", { tags: [], roles: ["tabpanel", "group", "region"] }],
     },
   },
 
