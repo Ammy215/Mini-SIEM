@@ -41,6 +41,20 @@ async function main() {
   });
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
+  console.log("0. A rejected sign-in shows a message, not a blank page");
+  // `a@b` satisfies the browser's type="email" check but not Pydantic's, so the
+  // API answers 422 with `detail` as a list of objects. Rendering that list
+  // directly used to throw "Objects are not valid as a React child" and leave
+  // the login page completely blank, with no way back but a reload.
+  await page.goto(`${FRONTEND_URL}/login`, { waitUntil: "networkidle" });
+  await page.fill("#email", "a@b");
+  await page.fill("#password", "whatever");
+  await page.click('button[type="submit"]');
+  await page.waitForTimeout(1500);
+  check("the form survives a validation error", await page.locator("#email").isVisible());
+  const rejection = await page.locator("form").innerText();
+  check("a readable reason is shown", /valid email|failed/i.test(rejection));
+
   console.log("1. Login");
   await page.goto(FRONTEND_URL, { waitUntil: "networkidle" });
   await page.fill("#email", ADMIN_EMAIL);

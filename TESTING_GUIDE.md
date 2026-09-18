@@ -219,7 +219,7 @@ carefully — this is the pre-deploy regression pass.
 | D2 🔧 | XSS | T1059.007 | `<script>` / `onerror=` in params | alert fires |
 | D3 🔧 | Path traversal | T1083 | `../` / `/etc/passwd` in url | alert fires |
 | D4 🔧 | Scanner UA | T1595 | `user_agent` contains `sqlmap`/`nikto`/`nmap` | alert fires |
-| D5 🛡️ | URL-encoded bypass attempt | same SQLi payload but `%27%20OR%201%3D1` | still fires — decoding happens before matching (this was a real bug, fixed; confirm it stays fixed) |
+| D5 🛡️ | URL-encoded bypass attempt | same SQLi payload but `%27%20OR%201%3D1`, **both** as an nginx log line and as a structured event posted to `/api/ingest` | fires either way — the URL is decoded on every ingestion path before matching, and the wire form is kept in `raw.url_raw`. Both halves were real bugs, found the second time because only the log-line half had been tested |
 | D6 🛡️ | Payload stored safely, rendered safely | SQLi/XSS payload lands in `events.raw_message` | Events table **displays** the raw text (escaped by React, no script execution) — confirms storing a payload is not the same as being vulnerable to it |
 
 ### E. Enrichment

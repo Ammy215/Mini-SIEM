@@ -1,4 +1,5 @@
 import { Loader2, RotateCw, Sparkles } from "lucide-react";
+import { apiErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/api/AuthContext";
 
@@ -33,7 +34,7 @@ export function AiSummary({ kind, targetId, useSummarize }) {
 
       {isError && (
         <p className="text-sm text-destructive">
-          {error?.response?.data?.detail ?? "Could not generate a summary."}
+          {apiErrorMessage(error, "Could not generate a summary.")}
         </p>
       )}
 

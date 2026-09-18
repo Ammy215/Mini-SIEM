@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useEnrichIp } from "@/api/hooks";
+import { apiErrorMessage } from "@/lib/errors";
 
 function Field({ label, value }) {
   return (
@@ -44,7 +45,7 @@ export default function IpIntel() {
 
       {enrich.isError && (
         <p className="text-sm text-destructive">
-          {enrich.error?.response?.data?.detail ?? "Lookup failed"}
+          {apiErrorMessage(enrich.error, "Lookup failed")}
         </p>
       )}
 

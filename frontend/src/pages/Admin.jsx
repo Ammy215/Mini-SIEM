@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/errors";
 import { UserPlus, Ban } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ function CreateUserDialog() {
       setFullName("");
       setRole("viewer");
     } catch (err) {
-      setError(err.response?.data?.detail ?? "Failed to create user");
+      setError(apiErrorMessage(err, "Failed to create user"));
     }
   };
 

@@ -5,6 +5,7 @@ import { AlertCircle, Eye, EyeOff, Loader2, Shield } from "lucide-react";
 import { useAuth } from "@/api/AuthContext";
 import { API_BASE_URL } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage } from "@/lib/errors";
 import { AmbientField } from "@/components/AmbientField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,7 +80,10 @@ export default function Login() {
       await login(email, password);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(err.response?.data?.detail ?? "Login failed");
+      // FastAPI sends `detail` as a list of objects for validation errors, and
+      // an address the browser accepts (a@b) is one Pydantic rejects — putting
+      // that list straight into JSX blanked the whole page.
+      setError(apiErrorMessage(err, "Login failed"));
     } finally {
       setSubmitting(false);
     }

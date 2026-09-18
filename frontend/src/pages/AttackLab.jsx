@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/errors";
 import { FlaskConical, Terminal, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -167,7 +168,7 @@ export default function AttackLab() {
           )}
           {runDetection.isError && (
             <p className="text-sm text-destructive">
-              {runDetection.error?.response?.data?.detail ?? "Detection run failed."}
+              {apiErrorMessage(runDetection.error, "Detection run failed.")}
             </p>
           )}
           {runDetection.data && (
