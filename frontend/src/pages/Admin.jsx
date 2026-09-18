@@ -52,20 +52,21 @@ function CreateUserDialog() {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Label htmlFor="create-user-email">Email</Label>
+            <Input id="create-user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
-            <Label>Full name</Label>
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            <Label htmlFor="create-user-name">Full name</Label>
+            <Input id="create-user-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Label htmlFor="create-user-password">Password</Label>
+            <Input id="create-user-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
-            <Label>Role</Label>
+            <Label htmlFor="create-user-role">Role</Label>
             <select
+              id="create-user-role"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               value={role}
               onChange={(e) => setRole(e.target.value)}

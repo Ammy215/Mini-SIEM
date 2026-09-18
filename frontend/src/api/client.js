@@ -1,6 +1,13 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Empty by default: the app calls its own origin and a proxy forwards /api —
+// Vite's in development and preview, Vercel's rewrite in production. Keeping
+// the API same-origin makes the refresh cookie first-party, so browsers that
+// block third-party cookies (Safari) don't sign people out on every reload.
+// Left unset, this used to read `undefined` and the refresh URL became
+// "undefined/api/auth/refresh". A trailing slash is trimmed so `${base}/api`
+// can't become "//api", which a browser reads as a different host.
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 
 let accessToken = null;
 let onAuthFailure = () => {};

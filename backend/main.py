@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from auth.placeholder_password import assert_no_placeholder_admin
 from config import settings
 from database import connect, disconnect
 from detection import context, engine
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI):
         # Fail at startup, with the fix in the message, rather than on the
         # first request that happens to touch a column a migration adds.
         await assert_schema_current(conn)
+        if settings.app_env == "production":
+            await assert_no_placeholder_admin(conn)
         await engine.seed_all(conn)
         await engine.requeue_interrupted_batches(conn)
 

@@ -9,17 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from auth.audit import log_action  # noqa: E402
 from auth.password import hash_password  # noqa: E402
+from config import PLACEHOLDER_ADMIN_PASSWORD as PLACEHOLDER_PASSWORD  # noqa: E402
 from config import settings  # noqa: E402
 from database import connect, disconnect  # noqa: E402
 
-PLACEHOLDER_PASSWORD = "change_me_strong_password"
 
-
-async def main() -> None:
-    if settings.app_env == "production" and settings.admin_password == PLACEHOLDER_PASSWORD:
-        print("Refusing to seed admin: ADMIN_PASSWORD is still the placeholder value in production.")
-        return
-
+async def main() -> int:
     pool = await connect()
     already_exists = False
 
@@ -27,6 +22,14 @@ async def main() -> None:
         existing = await conn.fetchval("SELECT 1 FROM users WHERE email = $1", settings.admin_email)
         if existing:
             already_exists = True
+        elif settings.app_env == "production" and settings.admin_password == PLACEHOLDER_PASSWORD:
+            # Checked only when an admin would actually be created, so a redeploy
+            # after seeding isn't blocked by a leftover placeholder. The non-zero
+            # exit stops a `migrate && seed_admin && uvicorn` chain: printing and
+            # exiting 0 used to let production start with no admin at all.
+            print("Refusing to seed admin: ADMIN_PASSWORD is still the placeholder value in production.")
+            await disconnect()
+            return 1
         else:
             password_hash = hash_password(settings.admin_password)
 
@@ -64,7 +67,8 @@ async def main() -> None:
         print(f"Admin user {settings.admin_email} already exists — nothing to do.")
     else:
         print(f"Admin user created: {settings.admin_email}")
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))

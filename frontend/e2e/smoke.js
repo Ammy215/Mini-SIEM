@@ -163,6 +163,33 @@ async function main() {
   check("builder conditions carry over to the JSON tab", definitionJson.includes('"/e2e-rule-preview"'));
   await page.click('button:has-text("Cancel")');
 
+  console.log("5b. Admin, Settings and IP Intel");
+  await page.goto(`${FRONTEND_URL}/admin`, { waitUntil: "networkidle" });
+  await page.waitForSelector('h1:has-text("Admin")', { timeout: 10000 });
+  check("admin lists users", (await page.locator("table tbody tr").count()) > 0);
+  check("admin shows the audit log", await page.locator("text=/Audit/i").first().isVisible());
+
+  await page.goto(`${FRONTEND_URL}/settings`, { waitUntil: "networkidle" });
+  await page.waitForSelector('h1:has-text("Settings")', { timeout: 10000 });
+  // Settings reports which API keys are configured; it must never print one.
+  const settingsText = (await page.textContent("body")) ?? "";
+  check("settings page reports configuration", /key|configured|context/i.test(settingsText));
+
+  await page.goto(`${FRONTEND_URL}/ip-intel`, { waitUntil: "networkidle" });
+  await page.waitForSelector('h1:has-text("IP Intel")', { timeout: 10000 });
+  const ipInput = page.locator('input[type="text"], input:not([type])').first();
+  await ipInput.fill("10.0.0.5");            // private: rejected before any outbound call
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(3000);
+  check("IP Intel refuses a private address", /private|reserved|cannot/i.test((await page.textContent("body")) ?? ""));
+
+  console.log("5c. A reload keeps the session (first-party refresh cookie)");
+  await page.goto(`${FRONTEND_URL}/alerts`, { waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(2500);
+  check("reloading a deep link stays signed in",
+    await page.locator('h1:has-text("Alerts")').isVisible().catch(() => false));
+
   console.log("6. Mobile responsive check");
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto(FRONTEND_URL, { waitUntil: "networkidle" });

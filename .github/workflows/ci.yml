@@ -35,17 +35,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Same version the backend is deployed on.
+          python-version-file: backend/.python-version
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+      - name: Lint (correctness rules, see ruff.toml)
+        run: ruff check .
+      - name: Audit dependencies for known vulnerabilities
+        run: pip-audit -r requirements.txt --progress-spinner off
       - name: Apply schema and seed
         run: |
           python scripts/migrate.py
           python scripts/seed_rules.py
           python scripts/seed_admin.py
       - name: Run tests
-        run: |
-          if find tests -name 'test_*.py' | grep -q .; then python -m pytest tests -v; else echo "No tests yet"; fi
+        run: python -m pytest tests -v
 
   frontend:
     runs-on: ubuntu-latest
@@ -57,9 +61,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then npm install; fi
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies (exactly as locked)
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Audit dependencies for known vulnerabilities
+        run: npm audit --audit-level=moderate
       - name: Build
-        run: |
-          if [ -f package.json ]; then npm run build; else echo "No frontend yet"; fi
+        run: npm run build

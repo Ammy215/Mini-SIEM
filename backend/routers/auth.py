@@ -24,12 +24,16 @@ _auth_rate_limit = rate_limit("auth", limit=10, window_minutes=15)
 
 
 def _cookie_kwargs() -> dict:
-    is_prod = settings.app_env == "production"
+    # The frontend reaches the API through a same-origin proxy (Vercel's /api
+    # rewrite in production, Vite's locally), so the refresh cookie is
+    # first-party everywhere and Lax is enough. It used to be SameSite=None for
+    # a cross-site deploy, which Safari blocks outright and which also let any
+    # site make credentialed cross-site requests carrying it.
     return {
         "httponly": True,
         "path": REFRESH_COOKIE_PATH,
-        "samesite": "none" if is_prod else "lax",
-        "secure": is_prod,
+        "samesite": "lax",
+        "secure": settings.app_env == "production",
     }
 
 

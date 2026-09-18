@@ -4,7 +4,6 @@ preview, deletion, and the run health shown with each rule.
 These go through the real API, so changes are committed; every rule, event and
 alert a test creates uses a pytest- marker and is removed afterwards."""
 
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 

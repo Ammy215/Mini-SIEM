@@ -81,7 +81,7 @@ HTTP:       httpx (async) for threat-intel API calls
 Frontend:   React 18 + Vite + Tailwind + shadcn/ui + Recharts + Framer Motion
 Data fetch: TanStack React Query + Axios
 Icons/font: Lucide React, JetBrains Mono (all IPs/hashes/CVEs), Inter (UI)
-Deploy:     Vercel (frontend) + Render (backend) + Render Postgres (db)
+Deploy:     Vercel (frontend, proxies /api) + Render (backend) + Neon Postgres (db)
 CI:         GitHub Actions (test on every push)
 ```
 
@@ -144,7 +144,9 @@ ENABLE_ATTACK_LAB=false
 
 **frontend/.env.example**
 ```
-VITE_API_BASE_URL=http://localhost:8000
+# Empty: the app calls its own origin and /api is proxied to the backend
+# (vite.config.js locally, vercel.json in production).
+VITE_API_BASE_URL=
 ```
 
 ---
@@ -719,37 +721,57 @@ Commit after every phase with a clear prefix: `feat:`, `fix:`, `security:`,
 
 ---
 
-## 🚀 Deployment (Vercel + Render + Render Postgres — free)
+## 🚀 Deployment (Vercel → Render, database on Neon — free tiers)
 
-**Backend + DB on Render**
-1. Push everything to the GitHub repo.
-2. Render → New → **PostgreSQL** (free) → copy the **Internal Database URL**.
-   *(Verify Render's current free-Postgres terms at signup — free databases have
-   had time limits before. If that's a problem, **Neon** offers a durable free
-   Postgres tier as a drop-in fallback — same `DATABASE_URL` idea.)*
-3. Render → New → **Web Service** → connect the repo → **Root Directory:** `backend`
-   → Build: `pip install -r requirements.txt` → Start:
-   `uvicorn main:app --host 0.0.0.0 --port $PORT`.
-4. Add env vars (from `.env.example`): `DATABASE_URL` = the internal URL,
-   `SECRET_KEY`, the API keys, `FRONTEND_ORIGIN` = your Vercel URL (fill after
-   step 7), `APP_ENV=production`. Leave `ENABLE_ATTACK_LAB` unset.
-5. In Render Shell (one-off): `python scripts/migrate.py && python scripts/seed_rules.py && python scripts/seed_admin.py`.
-6. Visit `https://<service>.onrender.com/api/health` → expect green.
-   *(Free web services sleep when idle; the first hit after a nap takes ~30–50s.
-   That's normal on free tier, not a bug.)*
+**Shape.** The browser only ever talks to the Vercel site. `frontend/vercel.json`
+rewrites `/api/*` to the Render backend and sends every other path to the SPA.
+Because the API is reached same-origin, the refresh cookie is first-party
+(`SameSite=Lax; Secure`) — a cross-site setup would be blocked by Safari and sign
+people out on every reload. The database is the existing **Neon** Postgres.
+
+**Before deploying (once, locally, with `APP_ENV=development`)**
+1. **Reset the admin password.** Production refuses to start while any admin
+   still has the `.env.example` password. Sign in locally → Admin → Users → reset
+   the admin's password (or `PUT /api/admin/users/{id}` with a new `password`).
+2. Generate a production secret — never reuse the development one:
+   `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
+3. Neon console → create a branch of `main` as a restore point.
+
+**Backend on Render**
+4. Render → New → **Web Service** → connect the repo → **Root Directory:** `backend`.
+   Python version comes from `backend/.python-version` (3.13).
+   - Build: `pip install -r requirements.txt`
+   - Start: `python scripts/migrate.py && python scripts/seed_rules.py && uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`
+   - `--proxy-headers --forwarded-allow-ips` makes the rate limits and the audit
+     log use the visitor's address from `X-Forwarded-For`. Without them every
+     request looks like it came from Vercel: one shared login rate limit locks
+     everyone out, and every audit entry records the proxy.
+5. Env vars (from `backend/.env.example`): `APP_ENV=production`, `DATABASE_URL`
+   (Neon), `SECRET_KEY` (step 2), the threat-intel and Groq keys, `ADMIN_EMAIL`,
+   `HOME_COUNTRIES` / `BUSINESS_*` if wanted. Leave **unset**: `ENABLE_ATTACK_LAB`,
+   `ENABLE_SYSLOG_LISTENER`. `FRONTEND_ORIGIN` is not needed (no cross-origin calls).
+6. Visit `https://<service>.onrender.com/api/health` → `{"status":"ok","database":"up"}`.
+   *(Free web services sleep when idle; the first request after a nap takes
+   ~30–50 s. Normal on the free tier.)* If it won't start, the log names the
+   setting: placeholder `SECRET_KEY`, short key, or an admin on the example password.
 
 **Frontend on Vercel**
-7. Vercel → New Project → import the repo → **Root Directory:** `frontend` →
-   framework auto-detects Vite → env var `VITE_API_BASE_URL` = your Render backend
-   URL → Deploy → get `https://<app>.vercel.app`.
-8. Back in Render, set `FRONTEND_ORIGIN` to that Vercel URL (CORS), redeploy.
+7. In `frontend/vercel.json`, replace `REPLACE-WITH-RENDER-SERVICE` with the
+   Render service host from step 6. Commit and push.
+8. Vercel → New Project → import the repo → **Root Directory:** `frontend` →
+   framework Vite. **Do not set `VITE_API_BASE_URL`** — empty means same-origin
+   through the proxy. Deploy → `https://<app>.vercel.app`.
 
-**After deploy — what you should see / do**
-- Open the Vercel URL → login page loads.
-- Log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` → dashboard loads, admin panel visible.
-- Upload a sample log → events appear → run detection → alerts show.
-- Dev-tools check: Network tab + Sources → confirm no API key or DB URL is
-  anywhere client-side. Only `VITE_API_BASE_URL` (a public URL) should appear.
+**After deploy — verify on the live site**
+- Login page loads and shows **Console online** (proves the `/api` rewrite reaches Render).
+- Sign in → dashboard. **Reload on `/alerts` — still signed in** (first-party
+  cookie; check in Safari too).
+- Deep links load directly (`/incidents`, `/rules`) — the SPA fallback works.
+- Upload a sample log → events → run detection → alerts; open one → evidence panel.
+  Also try an upload near the 10 MB limit through the proxy.
+- Admin → Audit log: your sign-in shows **your** IP, not a Vercel/Render one.
+- Dev tools → Network + Sources: no API key, `SECRET_KEY`, or Neon host anywhere.
+- `https://<app>.vercel.app/api/attack-lab/login` → 404 (Attack Lab absent).
 
 ---
 
@@ -759,7 +781,7 @@ Commit after every phase with a clear prefix: `feat:`, `fix:`, `security:`,
 # backend
 cd backend
 python -m venv venv && venv\Scripts\activate
-pip install -r requirements.txt --break-system-packages
+pip install -r requirements-dev.txt    # production installs requirements.txt only
 copy .env.example .env          # then fill it in
 python scripts/migrate.py
 python scripts/seed_rules.py
@@ -769,7 +791,7 @@ uvicorn main:app --reload --port 8000    # → http://localhost:8000/docs
 # frontend (new terminal)
 cd frontend
 npm install
-copy .env.example .env
+copy .env.example .env          # leave VITE_API_BASE_URL empty: /api is proxied
 npm run dev                     # → http://localhost:5173
 ```
 

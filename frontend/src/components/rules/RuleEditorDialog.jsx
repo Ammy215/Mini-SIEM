@@ -154,22 +154,23 @@ function Builder({ form, setForm, meta, isNew }) {
       <Section title="Alert">
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-xs">Scoring signal</Label>
-            <select className={cn(selectClass, "font-mono text-xs")} value={form.alert.signal ?? ""} onChange={(e) => setAlert({ signal: e.target.value })}>
+            <Label htmlFor="rule-alert-signal" className="text-xs">Scoring signal</Label>
+            <select id="rule-alert-signal" className={cn(selectClass, "font-mono text-xs")} value={form.alert.signal ?? ""} onChange={(e) => setAlert({ signal: e.target.value })}>
               <option value="">none</option>
               {(meta?.signals ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           {form.type === "signature" && (
             <div className="space-y-1">
-              <Label className="text-xs">Group repeat hits per attacker for (minutes)</Label>
-              <Input type="number" className="h-9 font-mono text-xs" value={form.alert.group_window_minutes ?? 60} onChange={(e) => setAlert({ group_window_minutes: e.target.value })} />
+              <Label htmlFor="rule-alert-group-window" className="text-xs">Group repeat hits per attacker for (minutes)</Label>
+              <Input id="rule-alert-group-window" type="number" className="h-9 font-mono text-xs" value={form.alert.group_window_minutes ?? 60} onChange={(e) => setAlert({ group_window_minutes: e.target.value })} />
             </div>
           )}
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Alert title (optional)</Label>
+          <Label htmlFor="rule-alert-title" className="text-xs">Alert title (optional)</Label>
           <Input
+            id="rule-alert-title"
             className="text-xs"
             placeholder="e.g. Suspicious login from {source_ip}"
             value={form.alert.title ?? ""}
@@ -396,7 +397,7 @@ export function RuleEditorDialog({ rule, isAdmin, open, onOpenChange }) {
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Label>Detection logic</Label>
+              <p className="text-sm font-medium leading-none">Detection logic</p>
               <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-xs">
                 {JSON.stringify(rule.definition, null, 2)}
               </pre>

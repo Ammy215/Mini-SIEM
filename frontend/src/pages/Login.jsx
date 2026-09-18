@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { AlertCircle, Eye, EyeOff, Loader2, Shield } from "lucide-react";
 import { useAuth } from "@/api/AuthContext";
+import { API_BASE_URL } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { AmbientField } from "@/components/AmbientField";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,7 @@ function useApiStatus() {
   const [status, setStatus] = useState({ state: "checking" });
   useEffect(() => {
     const controller = new AbortController();
-    const base = import.meta.env.VITE_API_BASE_URL ?? "";
-    fetch(`${base}/api/health`, { signal: controller.signal })
+    fetch(`${API_BASE_URL}/api/health`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((body) =>
         setStatus({

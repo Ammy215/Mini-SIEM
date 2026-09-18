@@ -108,3 +108,40 @@ async def test_refresh_cookie_issues_a_new_access_token(client, pool, test_user)
     r = await client.post("/api/auth/refresh")
     assert r.status_code == 200
     assert "access_token" in r.json()
+
+
+# --- the refresh cookie, now that the API is reached same-origin -------------
+
+def _refresh_cookie_header(response) -> str:
+    headers = [v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"]
+    matching = [h for h in headers if h.lower().startswith("refresh_token=") or "refresh" in h.split("=", 1)[0].lower()]
+    assert matching, f"no refresh cookie in {headers}"
+    return matching[0]
+
+
+async def test_refresh_cookie_is_first_party_lax_and_http_only(client, pool, test_user):
+    """The frontend reaches /api through a same-origin proxy, so the cookie must
+    be SameSite=Lax: None would be blocked by Safari and would let other sites
+    send it on credentialed cross-site requests."""
+    await _register_and_approve(client, pool, test_user)
+    r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+    assert r.status_code == 200
+
+    cookie = _refresh_cookie_header(r).lower()
+    assert "httponly" in cookie
+    assert "samesite=lax" in cookie
+    assert "path=/api/auth/refresh" in cookie
+    # only ever sent back to the refresh endpoint, never on every API call
+    assert "samesite=none" not in cookie
+
+
+async def test_refresh_cookie_is_secure_in_production(client, pool, test_user, monkeypatch):
+    from config import settings
+
+    await _register_and_approve(client, pool, test_user)
+    monkeypatch.setattr(settings, "app_env", "production")
+    r = await client.post("/api/auth/login", json={"email": test_user["email"], "password": test_user["password"]})
+    assert r.status_code == 200
+    cookie = _refresh_cookie_header(r).lower()
+    assert "secure" in cookie
+    assert "samesite=lax" in cookie

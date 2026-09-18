@@ -5,8 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/api/AuthContext";
 import { useAttackLogin, useAttackSearch, useRunDetection } from "@/api/hooks";
+import { API_BASE_URL } from "@/api/client";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Shown as Burp targets, so always absolute: behind the same-origin proxy the
+// API base is empty and a bare path is not something Burp can send to.
+const ENDPOINT_BASE = API_BASE_URL || window.location.origin;
 
 const SEARCH_PAYLOADS = [
   { label: "SQL Injection (T1190)", value: "' OR 1=1" },
@@ -18,7 +21,7 @@ function EndpointRow({ method, path }) {
   return (
     <div className="flex items-center gap-2 py-1.5 text-sm border-b border-border last:border-0 font-mono">
       <span className="text-cyan">{method}</span>
-      <span className="break-all">{API_BASE_URL}{path}</span>
+      <span className="break-all">{ENDPOINT_BASE}{path}</span>
     </div>
   );
 }

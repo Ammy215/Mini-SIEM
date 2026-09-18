@@ -1,0 +1,16 @@
+# Correctness checks only — the ones that catch real bugs. Style is not enforced.
+# B008 (a call in an argument default) is left out on purpose: `Depends(...)` in
+# a signature is how FastAPI declares dependencies.
+extend-exclude = ["venv"]
+
+[lint]
+select = [
+  "F",      # pyflakes: undefined / unused names, redefinitions
+  "E9",     # syntax errors
+  "E711", "E712", "E721",   # comparisons to None / True / type() that don't mean what they look like
+  "E722",   # bare except
+  "E741",   # ambiguous variable names (l, O, I)
+  "B006",   # mutable default arguments
+  "B017",   # pytest.raises(Exception) that would pass on any error
+  "B023",   # closures capturing a loop variable
+]
