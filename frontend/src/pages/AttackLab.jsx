@@ -84,12 +84,14 @@ export default function AttackLab() {
           <CardContent className="space-y-3">
             <form onSubmit={submitLogin} className="space-y-2">
               <Input
+                aria-label="Username to try"
                 placeholder="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="font-mono"
               />
               <Input
+                aria-label="Password to try"
                 placeholder="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -117,6 +119,7 @@ export default function AttackLab() {
           <CardContent className="space-y-3">
             <form onSubmit={submitSearch} className="space-y-2">
               <Input
+                aria-label="Search string to send"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="font-mono"

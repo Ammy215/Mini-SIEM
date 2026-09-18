@@ -99,7 +99,7 @@ function UsersTab() {
         <CreateUserDialog />
       </div>
       <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
+        <Table label="Users">
           <TableHeader>
             <TableRow>
               <TableHead>Email</TableHead>
@@ -150,7 +150,7 @@ function AuditTab() {
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      <Table>
+      <Table label="Audit log">
         <TableHeader>
           <TableRow>
             <TableHead>Time</TableHead>

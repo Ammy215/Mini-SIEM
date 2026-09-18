@@ -225,7 +225,11 @@ export default function Dashboard() {
 
       <Timeline timeline={timeline} label={range.label} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Three across only once there is room for a donut and its legend side by
+          side. At 1024px in three columns each card was about 255px wide, which
+          crushed the legend until the slice names disappeared entirely and the
+          counts ran past the card edge. */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard title="Logins">
           <DonutChart data={logins} emptyText="No logins in this range" />
         </ChartCard>

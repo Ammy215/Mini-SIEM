@@ -115,7 +115,7 @@ export default function Incidents() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">
-          <Table>
+          <Table label="Incidents">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>

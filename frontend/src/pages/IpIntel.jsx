@@ -32,6 +32,7 @@ export default function IpIntel() {
 
       <form onSubmit={handleSubmit} className="flex gap-2 max-w-md">
         <Input
+          aria-label="IP address to look up"
           placeholder="e.g. 8.8.8.8"
           value={ip}
           onChange={(e) => setIp(e.target.value)}

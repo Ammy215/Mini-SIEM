@@ -45,7 +45,7 @@ export default function Rules() {
 
   const renderTable = (list) => (
     <div className="rounded-lg border border-border overflow-x-auto">
-      <Table>
+      <Table label="Detection rules">
         <TableHeader>
           <TableRow>
             <TableHead>Rule</TableHead>

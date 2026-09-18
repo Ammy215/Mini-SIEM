@@ -20,7 +20,9 @@ export function DonutChart({ data, emptyText = "Nothing in this range" }) {
   const colorOf = (d, i) => d.color ?? SERIES[i % SERIES.length];
 
   return (
-    <div className="flex items-center gap-4">
+    // Wraps rather than crushes: in a container too narrow for both, the legend
+    // drops below the donut instead of losing its labels.
+    <div className="flex flex-wrap items-center gap-4">
       <div className="relative h-36 w-36 shrink-0">
         <div className="h-full w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -42,7 +44,7 @@ export function DonutChart({ data, emptyText = "Nothing in this range" }) {
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">total</span>
         </div>
       </div>
-      <ul className="min-w-0 flex-1 space-y-1.5 text-xs">
+      <ul className="min-w-[9rem] flex-1 space-y-1.5 text-xs">
         {slices.map((d, i) => (
           <li key={d.name} className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-1.5">

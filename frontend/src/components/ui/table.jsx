@@ -5,10 +5,20 @@ import { cn } from "@/lib/utils"
 
 function Table({
   className,
+  label,
   ...props
 }) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    // On a narrow screen these tables scroll sideways, and a region that scrolls
+    // has to be focusable or its right-hand columns cannot be reached without a
+    // mouse. `label` names it for anyone arriving there by keyboard.
+    <div
+      data-slot="table-container"
+      tabIndex={0}
+      role="group"
+      aria-label={label}
+      className="relative w-full overflow-x-auto"
+    >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}

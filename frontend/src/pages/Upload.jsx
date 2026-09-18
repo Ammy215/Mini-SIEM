@@ -283,7 +283,7 @@ function UploadResult({ result, formats, batch }) {
               <SkipReasons reasons={result.skipped_reasons} />
               {result.skipped_samples.length > 0 && (
                 <div className="rounded-lg border border-border overflow-x-auto">
-                  <Table>
+                  <Table label="Lines that were skipped">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-16">Line</TableHead>
@@ -338,7 +338,7 @@ function UploadHistory({ formats }) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <Table>
+          <Table label="Upload history">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>

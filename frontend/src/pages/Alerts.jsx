@@ -116,7 +116,7 @@ export default function Alerts() {
       </div>
 
       <div className="rounded-lg border border-border overflow-x-auto">
-        <Table>
+        <Table label="Alerts">
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>

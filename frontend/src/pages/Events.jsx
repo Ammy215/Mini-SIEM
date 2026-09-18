@@ -152,7 +152,7 @@ export default function Events() {
       </div>
 
       <div className="rounded-lg border border-border overflow-x-auto">
-        <Table>
+        <Table label="Events">
           <TableHeader>
             <TableRow>
               <TableHead>Time</TableHead>
