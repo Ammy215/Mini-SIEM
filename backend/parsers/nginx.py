@@ -1,8 +1,9 @@
 import re
 from datetime import datetime
-from urllib.parse import unquote, unquote_plus
 
 from parsers.timeutil import InvalidTimestamp
+# Re-exported: callers have imported decode_url from here since it lived here.
+from parsers.urls import decode_url  # noqa: F401
 
 # 203.0.113.5 - - [10/Jan/2026:10:00:01 +0000] "GET /login HTTP/1.1" 200 512 "-" "Mozilla/5.0"
 _LINE_RE = re.compile(
@@ -20,24 +21,6 @@ _LINE_RE = re.compile(
 # could never match it. Anchor on the trailing protocol instead and let the URL
 # hold whatever is between it and the method.
 _REQUEST_RE = re.compile(r'^(?P<method>\S+) (?P<url>.*) (?P<proto>HTTP/[0-9.]+)$')
-
-
-def decode_url(url: str) -> str:
-    """Percent-decode a request URL so signature rules match what the attacker
-    actually meant, not its wire encoding.
-
-    Real HTTP clients encode payloads: `' OR 1=1` arrives as `%27+OR+1%3d1`,
-    `<script>` as `%3cscript%3e`, `../` as `..%2f`. Matching literal patterns
-    against the raw line silently misses all of it.
-
-    Path and query are decoded separately because `+` only means a space in the
-    query string — in a path it is a literal plus.
-    """
-    path, sep, query = url.partition("?")
-    decoded_path = unquote(path)
-    if not sep:
-        return decoded_path
-    return f"{decoded_path}?{unquote_plus(query)}"
 
 
 def parse_line(line: str) -> dict | None:

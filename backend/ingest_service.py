@@ -5,6 +5,8 @@ import json
 from datetime import datetime, timezone
 from uuid import UUID
 
+from parsers.urls import decode_url
+
 INSERT_CHUNK = 1000
 
 _INSERT_SQL = """
@@ -17,7 +19,30 @@ _INSERT_SQL = """
 """
 
 
+def _normalised_url(event: dict) -> tuple[str | None, dict | None]:
+    """A URL is stored percent-decoded whichever door it came in by.
+
+    The nginx parser has always decoded what it parses, but an agent posting a
+    structured event to /api/ingest sends the URL as it went over the wire —
+    and that is exactly the form an attacker uses. Left encoded, `%27%20OR%201%3D1`
+    matched no signature rule, so SQLi, XSS and traversal pushed through the
+    ingest API went undetected. Decoding here covers every write path at once.
+
+    The wire form is kept in `raw.url_raw`, as the parser already does, so
+    nothing an analyst might need is thrown away.
+    """
+    url = event.get("url")
+    raw = event.get("raw")
+    if not url:
+        return url, raw
+    decoded = decode_url(url)
+    if decoded == url:
+        return url, raw
+    return decoded, {**raw, "url_raw": url} if raw is not None else {"url_raw": url}
+
+
 def _event_to_row(event: dict, batch_id: UUID | None) -> tuple:
+    url, raw = _normalised_url(event)
     return (
         event.get("event_time") or datetime.now(timezone.utc),
         event["source_type"],
@@ -28,11 +53,11 @@ def _event_to_row(event: dict, batch_id: UUID | None) -> tuple:
         event.get("action"),
         event.get("status_code"),
         event.get("method"),
-        event.get("url"),
+        url,
         event.get("user_agent"),
         event.get("country"),
         event.get("raw_message"),
-        json.dumps(event["raw"]) if event.get("raw") is not None else None,
+        json.dumps(raw) if raw is not None else None,
         event.get("host"),
         event.get("event_code"),
         event.get("outcome"),
