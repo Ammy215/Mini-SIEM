@@ -462,6 +462,28 @@ $u.Send($b, $b.Length, "127.0.0.1", 5514); $u.Close()
 | V9 🛡️ | Production | Render environment | `ENABLE_SYSLOG_LISTENER` unset or false (a free web service can't receive syslog anyway) |
 | V10 🛡️ | Non-admin | `GET /api/admin/listener` as analyst | 403 |
 
+### W. Same-origin deploy shape, secrets and evidence (final pass)
+
+Added after the pre-deploy verification pass. These cover work that has no
+cases above: the proxy topology, the production start-up guards, the alert
+evidence panel, and the incident timeline.
+
+| # | Case | Steps | Expected |
+|---|---|---|---|
+| W1 🔧 | Malformed request line is still detected | upload an nginx line whose URL holds literal spaces: `"GET /products?id=1' OR 1=1-- HTTP/1.1" 500 128 "-" "sqlmap/1.6"` | parsed as nginx (not the generic fallback), `url`/`status_code`/`user_agent` all set, and it raises **both** T1190 (SQLi) and T1595 (scanner UA) |
+| W2 🔧 | One dead provider doesn't cost the others | make one threat-intel provider fail (clear its `ioc_cache` row and block it) for an alert from a real public IP | the working provider's signals still land, evidence shows `enrichment_pending_providers`, and a later retry does **not** double-count the score (it is rebuilt from `enrichment_base_score`) |
+| W3 🔧 | Evidence panel | expand any alert on Alerts | score breakdown (rule + threat intel = total), what triggered it (counts, usernames, event ids, first/last seen), each provider's raw values, signals that counted, and what was considered and not counted — all without pressing **Summarize with AI**, which stays available below |
+| W4 🔧 | Incident timeline | open an incident | each alert drawn on one shared time scale with its own span, ordered by start time and labelled with its start clock time; selecting one opens its evidence; header shows the campaign's span and duration |
+| W5 🔧 | Sign-in page reports the API | load `/login` with the backend up, then stopped | **Console online** (green) vs **Cannot reach the API** (red); with the DB down, **API up, database unavailable** |
+| W6 🔧 | Stuck detection lease | kill the backend mid-detection, restart, then `python scripts/clear_detection_lease.py` and `--release` | the first prints who holds it and for how long (exit 1); `--release` frees it and the next pass runs. Never `DELETE` the row — the claim is an `UPDATE ... WHERE id = 1`, so a missing row blocks detection permanently |
+| W7 🛡️ | `/docs` renders under the CSP | open `http://localhost:8000/docs` and `/redoc` | both render; the relaxed CSP applies to those two paths only — every `/api/*` response still carries `default-src 'none'` |
+| W8 🛡️ | Same-origin proxy keeps the session | with the frontend proxying `/api`, sign in, then reload on `/alerts` (and in Safari once deployed) | still signed in — the refresh cookie is first-party `SameSite=Lax`; deep links load directly rather than 404ing |
+| W9 🛡️ | Client IP behind the proxy | run uvicorn with `--proxy-headers --forwarded-allow-ips="*"`, send requests with different `X-Forwarded-For` values | the auth rate limit counts **per client address**, not once for the whole proxy, and audit rows record the client address |
+| W10 🛡️ | Production refuses unsafe secrets | start with `APP_ENV=production` and the `.env.example` `SECRET_KEY`; then a key under 32 bytes; then an admin whose password is the example one | refuses to start each time, naming the setting or the account — and never printing the value. A settings error must not echo `DATABASE_URL` or any API key |
+| W11 🛡️ | Authorisation matrix | every route in `/openapi.json` × anon / viewer / analyst / admin | an identity without access gets 401 or 403 — never 422 or 404, which would mean it reached the handler. Ingestion is analyst+; rule authoring, deletion and reset are admin-only |
+| W12 🛡️ | Hostile content is shown, never run | seed payloads into every displayed field (alert/incident title, username, host, url, user agent, raw message, rule title, upload filename) and open every page | rendered as text, bidi characters shown as `[U+202E]`, no script executes, and nothing 500s |
+| W13 🛡️ | Every query parameter survives hostile input | send SQLi, NUL (`%00`), traversal, overlong, unicode, format-string and type-confusion values into every query parameter in `/openapi.json` | no response is 5xx, and a 422 never quotes the submitted value back. A NUL byte anywhere in the path or query is refused with 422 — PostgreSQL TEXT cannot hold U+0000, so one reaching SQL would be a 500 |
+
 ---
 
 ## 5. Pre-deployment sign-off checklist
@@ -482,6 +504,8 @@ checklist) before starting Phase 12:
 - [ ] K. Headers/CORS/secret-leak check clean
 - [ ] L. Known edge cases behave as documented (not necessarily "fixed" — some are accepted limitations, just confirm they haven't regressed into something worse, like a 500)
 - [ ] M. Attack Lab confirmed OFF and invisible before deploy env vars are set
+- [ ] W. Deploy shape, production guards, evidence panel and timeline all pass
+- [ ] Lint and dependency audits clean: `ruff check` + `pip-audit` + `npm run lint` + `npm audit`
 - [ ] Full automated suite green: `pytest tests -v` (backend) + `npm run build` (frontend)
 - [ ] CI green on the latest push
 

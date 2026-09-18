@@ -363,3 +363,30 @@ labelled "latest 50 of N", so it doesn't claim to be a total. The API has no
 way to return severity counts across all incidents. The proper fix is a small
 stats endpoint (for example `GET /api/stats/incidents`, returning counts by
 severity and status) for the bar to read instead.
+
+### 4.16 `X-Forwarded-For` is trusted when the Render URL is hit directly
+
+In production uvicorn runs with `--proxy-headers --forwarded-allow-ips="*"`, so
+the address the app uses for rate limiting and the audit log comes from the
+`X-Forwarded-For` header. That is what makes the deployed app see the visitor
+rather than Vercel — without it every request would share one rate-limit bucket
+and every audit row would record the proxy.
+
+The cost is that the header is only as trustworthy as whoever set it. Traffic
+through the Vercel proxy is fine: Vercel appends the real client address. But
+the Render URL stays reachable on its own, and a request sent straight to it
+can claim any `X-Forwarded-For` it likes — which means an attacker can spread
+login attempts across invented addresses and sidestep the per-IP auth limit, or
+write a misleading address into the audit log.
+
+The fix is to trust the header only from the proxy: replace `"*"` with Vercel's
+egress ranges (`--forwarded-allow-ips="<ranges>"`), so a direct caller falls
+back to its real socket address. Vercel publishes those ranges but they change,
+so this needs a way to keep them current rather than a one-off paste. A second
+layer would be a shared secret header set by the proxy and required by the
+backend, making the Render URL unusable directly.
+
+Accepted for now because the global ceiling (300/min) and the ingest limit still
+apply per claimed address, the lockout counter on the user row is per account
+rather than per IP, and the deployed entry point people actually use is the
+Vercel domain.

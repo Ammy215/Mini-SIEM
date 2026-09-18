@@ -141,6 +141,39 @@ async def test_null_byte_nested_in_raw_json_returns_422(client, auth):
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize(
+    "path,param",
+    [
+        ("/api/events", "q"),
+        ("/api/events", "username"),
+        ("/api/events", "action"),
+        ("/api/events", "source_type"),
+        ("/api/alerts", "status"),
+        ("/api/alerts", "severity"),
+    ],
+)
+async def test_null_byte_in_query_parameter_returns_422_not_500(client, auth, path, param):
+    """The body was guarded but query values went straight from the URL into SQL.
+
+    Found by the pre-deploy fuzz sweep: any signed-in caller could 500 the API
+    with ?q=%00, because asyncpg raises CharacterNotInRepertoireError.
+    """
+    r = await client.get(path, params={param: "a\x00b"}, headers=auth)
+    assert r.status_code == 422
+    assert "NUL" in r.text
+
+
+async def test_null_byte_in_path_returns_422_not_500(client, auth):
+    r = await client.get("/api/enrich/ip/8.8.8.8%00", headers=auth)
+    assert r.status_code == 422
+
+
+async def test_query_without_a_null_byte_is_untouched(client, auth):
+    """The guard must not reject an ordinary percent-encoded value."""
+    r = await client.get("/api/events", params={"q": "100% coverage"}, headers=auth)
+    assert r.status_code == 200
+
+
 async def test_malformed_ip_in_event_returns_422_not_500(client, auth):
     r = await client.post(
         "/api/ingest",
