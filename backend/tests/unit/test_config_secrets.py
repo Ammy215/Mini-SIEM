@@ -12,6 +12,19 @@ from config import MIN_SECRET_KEY_BYTES, PLACEHOLDER_SECRET_KEY, Settings
 STRONG = "k" * 64
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_settings(monkeypatch):
+    """Settings read the environment even with _env_file=None.
+
+    CI exports a SECRET_KEY of its own, so the cases that check what happens
+    when none is set were reading CI's value and passing only on a machine
+    where the variable happened to be absent or the placeholder. Clearing them
+    makes the result the same everywhere.
+    """
+    for name in ("SECRET_KEY", "APP_ENV"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def make(**overrides):
     # _env_file=None: the developer's own .env must not decide the outcome.
     return Settings(_env_file=None, database_url="postgresql://unused", **overrides)
