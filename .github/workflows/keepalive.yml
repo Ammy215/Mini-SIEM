@@ -1,0 +1,86 @@
+# Twice-daily health check of the deployed backend, plus a manual run for
+# waking it before a demo.
+#
+# IMPORTANT: GitHub disables scheduled workflows in a public repository after
+# 60 days with no repository activity (pushes and similar). Running this
+# workflow by hand does NOT count as activity and does not reset that clock.
+# If the schedule stops firing, push a commit or re-enable the workflow from
+# the Actions tab.
+#
+# What it does: calls /api/health on the Render service directly (not through
+# the Vercel proxy) and fails unless the answer is 200 with "database":"up".
+# /api/health runs a real SELECT 1, so a pass proves the whole path — Render
+# instance, app, and Neon — rather than just that a process is listening.
+#
+# What it does NOT do: keep anything warm. A free Render instance sleeps after
+# about 15 minutes idle and Neon suspends after 5, so between checks both are
+# asleep. That is the point: see "Keep-alive and free-tier hours" in CLAUDE.md
+# for the cost (~16 Render hours a month) and why the database needs no
+# keep-alive of its own.
+#
+# Configure: repository Settings -> Secrets and variables -> Actions ->
+# Variables -> RENDER_HEALTH_URL = https://<service>.onrender.com
+# (the base URL only; /api/health is appended here).
+name: Keep-alive health check
+
+on:
+  schedule:
+    # Off the hour, so it does not land with the rush of jobs GitHub schedules
+    # at :00. Twice a day: 00:23 and 12:23 UTC.
+    - cron: "23 */12 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the backend answers with the database up
+        env:
+          RENDER_HEALTH_URL: ${{ vars.RENDER_HEALTH_URL }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+
+          base="${RENDER_HEALTH_URL%/}"
+          if [ -z "$base" ]; then
+            # Before the first deploy there is nothing to check. A scheduled run
+            # says so and passes rather than failing every 12 hours; a manual
+            # run fails, because someone expected an answer.
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::RENDER_HEALTH_URL is not set (Settings -> Secrets and variables -> Actions -> Variables)."
+              exit 1
+            fi
+            echo "::warning::RENDER_HEALTH_URL is not set yet, so there is no backend to check."
+            exit 0
+          fi
+          case "$base" in
+            *vercel.app*)
+              echo "::error::RENDER_HEALTH_URL points at Vercel. Use the Render URL directly, so the check measures the backend and not the proxy."
+              exit 1 ;;
+          esac
+          url="$base/api/health"
+
+          # Plain curl, default user agent. --max-time 90 covers a cold start:
+          # a sleeping free instance takes 30-50 s to answer its first request.
+          check() {
+            body="$(mktemp)"
+            code="$(curl -sS --max-time 90 -o "$body" -w '%{http_code}' "$url")" || code="${code:-000}"
+            echo "HTTP $code: $(head -c 300 "$body")"
+            [ "$code" = "200" ] && grep -Eq '"database"[[:space:]]*:[[:space:]]*"up"' "$body"
+          }
+
+          if check; then
+            echo "Backend and database are up."
+            exit 0
+          fi
+          echo "First attempt failed; retrying once in 30 seconds."
+          sleep 30
+          if check; then
+            echo "Backend and database are up (second attempt)."
+            exit 0
+          fi
+          echo "::error::$url did not answer 200 with \"database\":\"up\" after two attempts."
+          exit 1

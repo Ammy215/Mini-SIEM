@@ -454,7 +454,7 @@ blocks nothing from your machine but tells you instantly what broke.
 ```
 Mini-SIEM/
 ├─ README.md  LICENSE  .gitignore
-├─ .github/workflows/ci.yml
+├─ .github/workflows/  (ci.yml, keepalive.yml)
 ├─ backend/
 │  ├─ .env.example  requirements.txt
 │  ├─ main.py  config.py  database.py
@@ -736,9 +736,12 @@ people out on every reload. The database is the existing **Neon** Postgres.
 2. Generate a production secret — never reuse the development one:
    `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
 3. Neon console → create a branch of `main` as a restore point.
+4. Neon console → the production branch → **Compute** → set min and max both to
+   **0.25 CU**, scale to zero after **5 minutes**. See "Keep-alive and free-tier
+   hours" below for why.
 
 **Backend on Render**
-4. Render → New → **Web Service** → connect the repo → **Root Directory:** `backend`.
+5. Render → New → **Web Service** → connect the repo → **Root Directory:** `backend`.
    Python version comes from `backend/.python-version` (3.13).
    - Build: `pip install -r requirements.txt`
    - Start: `python scripts/migrate.py && python scripts/seed_rules.py && uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`
@@ -746,21 +749,28 @@ people out on every reload. The database is the existing **Neon** Postgres.
      log use the visitor's address from `X-Forwarded-For`. Without them every
      request looks like it came from Vercel: one shared login rate limit locks
      everyone out, and every audit entry records the proxy.
-5. Env vars (from `backend/.env.example`): `APP_ENV=production`, `DATABASE_URL`
+6. Env vars (from `backend/.env.example`): `APP_ENV=production`, `DATABASE_URL`
    (Neon), `SECRET_KEY` (step 2), the threat-intel and Groq keys, `ADMIN_EMAIL`,
    `HOME_COUNTRIES` / `BUSINESS_*` if wanted. Leave **unset**: `ENABLE_ATTACK_LAB`,
    `ENABLE_SYSLOG_LISTENER`. `FRONTEND_ORIGIN` is not needed (no cross-origin calls).
-6. Visit `https://<service>.onrender.com/api/health` → `{"status":"ok","database":"up"}`.
+7. Visit `https://<service>.onrender.com/api/health` → `{"status":"ok","database":"up"}`.
    *(Free web services sleep when idle; the first request after a nap takes
    ~30–50 s. Normal on the free tier.)* If it won't start, the log names the
    setting: placeholder `SECRET_KEY`, short key, or an admin on the example password.
 
 **Frontend on Vercel**
-7. In `frontend/vercel.json`, replace `REPLACE-WITH-RENDER-SERVICE` with the
-   Render service host from step 6. Commit and push.
-8. Vercel → New Project → import the repo → **Root Directory:** `frontend` →
+8. In `frontend/vercel.json`, replace `REPLACE-WITH-RENDER-SERVICE` with the
+   Render service host from step 7. Commit and push.
+9. Vercel → New Project → import the repo → **Root Directory:** `frontend` →
    framework Vite. **Do not set `VITE_API_BASE_URL`** — empty means same-origin
    through the proxy. Deploy → `https://<app>.vercel.app`.
+
+**Keep-alive check**
+10. GitHub → repo **Settings → Secrets and variables → Actions → Variables** →
+    `RENDER_HEALTH_URL` = `https://<service>.onrender.com` (the Render URL itself,
+    base only, **not** the Vercel one). Then Actions → **Keep-alive health check** →
+    Run workflow, and confirm it goes green. Until the variable is set, scheduled
+    runs pass with a warning and manual runs fail.
 
 **After deploy — verify on the live site**
 - Login page loads and shows **Console online** (proves the `/api` rewrite reaches Render).
@@ -772,6 +782,56 @@ people out on every reload. The database is the existing **Neon** Postgres.
 - Admin → Audit log: your sign-in shows **your** IP, not a Vercel/Render one.
 - Dev tools → Network + Sources: no API key, `SECRET_KEY`, or Neon host anywhere.
 - `https://<app>.vercel.app/api/attack-lab/login` → 404 (Attack Lab absent).
+
+### Keep-alive and free-tier hours
+
+**What `.github/workflows/keepalive.yml` does.** Every **12 hours** (00:23 and
+12:23 UTC, off the hour) it calls the Render URL's `/api/health` directly and
+fails unless it gets a 200 with `"database":"up"` — one retry after 30 s, 90 s
+timeout to cover a cold start. `/api/health` runs a real `SELECT 1`, so a green
+run proves the instance, the app and Neon all answer. It also has a manual
+**Run workflow** button: use it a couple of minutes before a demo so nobody sits
+through the 30–50 s cold start.
+
+**It does not keep anything warm.** A free Render instance sleeps after 15
+minutes with no incoming requests, so between checks the backend is asleep —
+deliberately. What it costs:
+
+- **Render: about 16 hours a month.** Each check wakes the instance for roughly a
+  minute of cold start plus the 15 idle minutes before it sleeps again: ~16
+  minutes, twice a day, thirty days. Those hours come out of Render's **750 free
+  instance hours a month, which are shared by every free web service on the
+  account** — a second free project draws from the same pool. One service
+  running nonstop would use ~744 of them; the keep-alive is about 2%.
+- The real draw is use. Every visit keeps the instance up until 15 minutes after
+  the last request, and an open dashboard polls every 10 s — but **only while its
+  tab is visible**. TanStack Query pauses interval refetches in a hidden tab
+  (`refetchIntervalInBackground: false`, stated in `App.jsx`); measured at 19 API
+  calls in 40 s visible and 0 hidden. So a forgotten background tab can't hold the
+  service awake around the clock.
+
+**Why there is no keep-alive for the database.** Neon's free tier scales compute
+to zero after 5 minutes without a query and wakes on the next one in well under
+a second. The only thing that queries it is the backend: while the backend is
+awake its detection scheduler runs every 60 s, which keeps Neon up for exactly as
+long as Render is (plus Neon's own 5 idle minutes); while the backend sleeps,
+nothing needs the database. A separate database pinger would only spend compute
+hours on keeping an idle database awake. Each health check wakes Neon as a side
+effect of the `SELECT 1`, which is part of what it's checking.
+
+**Neon compute: pinned at 0.25 CU.** The free plan allows 100 CU-hours a month.
+At a fixed 0.25 CU that is 400 active hours; the keep-alive's share is about
+5 CU-hours (~21 minutes awake per check × 60 checks). Pinning min and max to
+0.25 means a busy day can't autoscale up and burn the month early — at 2 CU the
+same hours would cost eight times as much. Scale-to-zero is what actually keeps
+it inside the limit: even at 0.25 CU, running nonstop would be ~183 CU-hours.
+Branches have their own compute and count against the same allowance, so delete
+test branches when you're done with them.
+
+**Scheduled workflows stop after 60 days of silence.** GitHub disables scheduled
+workflows in a public repository after 60 days with no repository activity, and
+manual runs don't count as activity. If the checks stop appearing, push a commit
+or re-enable the workflow from the Actions tab.
 
 ---
 

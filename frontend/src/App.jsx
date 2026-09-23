@@ -15,7 +15,17 @@ import Admin from "@/pages/Admin";
 import Settings from "@/pages/Settings";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      // Polling stops while the tab is hidden. This is TanStack Query's default,
+      // stated here because the deployment depends on it: a dashboard left open
+      // in a background tab must not keep the free Render instance awake around
+      // the clock. Measured: 19 API calls in 40 s visible, 0 while hidden.
+      refetchIntervalInBackground: false,
+    },
+  },
 });
 
 function RequireAuth({ children }) {
