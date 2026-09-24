@@ -9,6 +9,11 @@ they match — then groups an attacker's alerts into a single incident.
 It is deliberately small enough to understand end to end, and shaped like the
 real thing (Splunk, Elastic Security, Microsoft Sentinel) where it counts.
 
+**Live:** https://mini-siem-five.vercel.app — every account is created or
+approved by an administrator before it can sign in. It runs on free tiers (Vercel,
+Render, Neon): the first request after a quiet spell can take 30–50 seconds
+while the backend wakes.
+
 ```
 Log sources ─► Collector ─► Parse + normalise ─► PostgreSQL ─► Detection engine ─► Alerts ─► Incidents
  (upload, API,             (11 formats,          (one events    (15 rules, threshold     (score,    (correlated
