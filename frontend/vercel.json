@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE-WITH-RENDER-SERVICE.onrender.com/api/:path*"
+      "destination": "https://mini-siem-api-ga6i.onrender.com/api/:path*"
     },
     {
       "source": "/((?!api/).*)",
