@@ -17,6 +17,7 @@ from ingest_listener import syslog_server
 from middleware.body_size_limit import BodySizeLimitMiddleware
 from middleware.global_rate_limit import GlobalRateLimitMiddleware
 from middleware.null_bytes import NullByteMiddleware
+from middleware.proxy_secret import ProxySecretMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 from migrations import assert_schema_current
 from routers import (
@@ -80,6 +81,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(NullByteMiddleware)
 app.add_middleware(GlobalRateLimitMiddleware)
+# Outside the rate limiter, so a direct-to-Render request never gets a bucket.
+app.add_middleware(ProxySecretMiddleware, secret=settings.internal_proxy_secret)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,

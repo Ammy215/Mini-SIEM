@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     enable_attack_lab: bool = False
 
+    # Shared with Vercel's /api proxy; blank disables the check (middleware/proxy_secret.py).
+    internal_proxy_secret: str = ""
+
     detection_interval_seconds: int = 60
 
     # Context signals. Blank = not configured: the signal is skipped and the
