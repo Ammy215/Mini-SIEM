@@ -30,6 +30,11 @@ def test_correct_secret_passes():
     assert r.status_code == 200
 
 
+def test_pasted_whitespace_in_secret_is_ignored():
+    r = _client("s3cret\n ").post("/api/auth/login", headers={"X-Internal-Proxy-Secret": "s3cret"})
+    assert r.status_code == 200
+
+
 def test_health_is_exempt_for_keepalive():
     assert _client("s3cret").get("/api/health").status_code == 200
 

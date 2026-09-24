@@ -24,7 +24,8 @@ _EXEMPT_PATHS = {"/api/health"}
 class ProxySecretMiddleware:
     def __init__(self, app, secret: str):
         self.app = app
-        self.secret = secret.encode()
+        # Trimmed on both sides: a pasted trailing newline would otherwise lock the app out.
+        self.secret = secret.strip().encode()
 
     async def __call__(self, scope, receive, send):
         if (

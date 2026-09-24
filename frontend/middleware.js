@@ -11,33 +11,16 @@ export const config = { matcher: '/api/:path*' }
 const API_ORIGIN = 'https://mini-siem-api-ga6i.onrender.com'
 
 export default function middleware(request) {
-  const url = new URL(request.url)
-
-  // TEMP DIAGNOSTIC — remove in the next commit.
-  if (url.pathname === '/api/_probe') {
-    const probe = new Headers(request.headers)
-    probe.set('x-probe', 'hello')
-    const res = new Headers({ 'x-middleware-rewrite': 'https://httpbin.org/headers', 'x-proxy-mw': '1' })
-    const keys = []
-    probe.forEach((value, name) => {
-      keys.push(name)
-      res.set(`x-middleware-request-${name}`, value)
-    })
-    res.set('x-middleware-override-headers', keys.join(','))
-    return new Response(null, { headers: res })
-  }
-
-  const secret = process.env.INTERNAL_PROXY_SECRET
+  // Trimmed on both sides: a pasted trailing newline would otherwise lock the app out.
+  const secret = process.env.INTERNAL_PROXY_SECRET?.trim()
   // Unset: fall through to the plain rewrite in vercel.json.
   if (!secret) return
 
+  const url = new URL(request.url)
   const upstream = new Headers(request.headers)
   upstream.set('x-internal-proxy-secret', secret)
 
-  const out = new Headers({
-    'x-middleware-rewrite': API_ORIGIN + url.pathname + url.search,
-    'x-proxy-mw': '1', // TEMP DIAGNOSTIC
-  })
+  const out = new Headers({ 'x-middleware-rewrite': API_ORIGIN + url.pathname + url.search })
   const names = []
   upstream.forEach((value, name) => {
     names.push(name)
