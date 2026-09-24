@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LogText } from "@/components/LogText";
 import { useAuth } from "@/api/AuthContext";
 import { useAnalyzeBatch, useIngestFormats, useUploadBatches, useUploadLog } from "@/api/hooks";
-import { apiErrorMessage } from "@/lib/errors";
+import { apiErrorMessage, EDGE_BLOCK_UPLOAD_MESSAGE, isEdgeBlock } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -492,7 +492,9 @@ export default function Upload() {
       setResult(data);
       setFile(null);
     } catch (err) {
-      setError(apiErrorMessage(err, "Upload failed. Check the file and try again."));
+      // A firewall block is not a problem with the file, so it must not be
+      // reported as one.
+      setError(isEdgeBlock(err) ? EDGE_BLOCK_UPLOAD_MESSAGE : apiErrorMessage(err, "Upload failed. Check the file and try again."));
     }
   };
 

@@ -421,3 +421,86 @@ SIEMs, and there are three ways to spend the sensitivity:
 Nothing is changed for now: the threshold is part of the shipped rule set, and
 choosing among these is a tuning decision for whoever runs the system, not a bug
 to fix silently. The number is recorded here so the choice can be made with data.
+
+### 4.18 Render's edge firewall blocks logs that contain real attack strings
+
+**What happens.** In front of every Render service sits Render's own edge
+firewall (Cloudflare — a direct request to the Render URL answers with
+`server: cloudflare` and a `cf-ray` header). It inspects request bodies, and when
+one contains certain well-known attack strings it answers **403 with an HTML
+"Blocked" page before the request reaches the app**. The app never sees it: no
+event is stored, no audit entry is written, no detection runs.
+
+That lands on the one thing a SIEM exists to do. A web server's access log from a
+day it was attacked is *made of* these strings, so a genuine log is the kind of
+file most likely to be refused.
+
+**Where.** Both ingestion paths: `POST /api/logs/upload` (the Upload page) and
+`POST /api/ingest` (agents). Through the Vercel proxy and directly against the
+Render URL alike — Vercel just relays Render's 403. One blocked line refuses the
+**whole file**, not just that line.
+
+**Only on the live host.** Locally there is no Render edge, so every upload test
+passes. It was found on 24 September 2026, uploading the repo's own
+`tests/fixtures/sample_nginx.log` to the deployed site.
+
+**What was measured** (24 Sep 2026, bisected with requests the app would have
+discarded, so nothing was stored — this is what the edge did that day, not its
+published rulebook, and it can change without notice):
+
+| Blocked by the edge | Passes through to the app |
+|---|---|
+| `' OR 1=1--` inside an uploaded file | the same `' OR 1=1--` inside a JSON `/api/ingest` body |
+| `../../etc/passwd`, on both paths | `../` or `/etc/passwd` on their own |
+| `%2e%2e%2f%2e%2e%2fetc%2fpasswd` (URL-encoded traversal) | `..\..\windows\win.ini`, `/etc/shadow`, `/proc/self/environ`, `boot.ini` |
+| `${jndi:ldap://…}` (Log4Shell), on both paths | `<script>alert(1)</script>`, `<img src=x onerror=alert(1)>` |
+| | `UNION SELECT`, a `sqlmap` user agent |
+| | `;cat /etc/hosts`, `cmd.exe /c whoami`, `<?php system(…) ?>` |
+
+Query strings were not affected in the cases tried: `GET /api/events?q=/../../etc/passwd`
+reached the app.
+
+**No setting to change.** Checked on 24 September 2026: Render's free tier has
+no firewall or security controls in the dashboard, so this cannot be switched
+off or tuned for the service at this tier.
+
+**What is done today.** The UI tells the truth. `frontend/src/lib/errors.js`
+recognises a 403 whose body is not JSON — the app's own refusals always carry a
+JSON `detail` — and says the hosting firewall blocked the request because it
+contains text that looks like an attack, rather than "check the file". The
+Upload page says so specifically and tells the user the file isn't broken and
+that redacting those lines lets the rest through; every other screen (the rule
+editor, for one, when a rule's value is a traversal path) shows the general
+version. Agents posting to `/api/ingest` get Render's HTML page itself: a client
+should treat a **non-JSON 403** as this, not as an authorisation failure.
+
+**Workarounds until it is fixed.** Remove or redact the offending lines and
+upload the rest, or run Mini SIEM locally, where there is no edge in the way.
+
+**The real fix — planned, deliberately not done on deploy day.** Compress the
+body so the firewall has nothing to pattern-match:
+
+- **Upload:** gzip the file in the browser with `CompressionStream("gzip")`
+  before sending it; the backend recognises the gzip magic bytes and inflates.
+  Plain uploads keep working unchanged. Files get smaller as a bonus.
+- **Ingest:** accept `Content-Encoding: gzip` bodies from agents on
+  `/api/ingest`.
+- **Decompression-bomb protection is the whole difficulty.** A few kilobytes of
+  gzip can expand to gigabytes. Inflate as a stream, count output bytes as they
+  are produced, and stop with a 413 the moment they pass `MAX_UPLOAD_BYTES` (or
+  `MAX_INGEST_BODY_BYTES`). `middleware/body_size_limit.py` bounds the *compressed*
+  bytes on the wire today and must go on doing so; the cap on *inflated* bytes is
+  new, and it — not the compressed size — is what protects the 512 MB instance.
+- **Tests before shipping:** a bomb is refused with a 413 without the process
+  growing; a gzipped file containing `../../etc/passwd` uploads and raises the
+  traversal alert; a corrupt gzip is a clean 4xx, not a 500.
+- **Verify the premise on the live host first.** That the edge does not inflate
+  and inspect compressed request bodies is the assumption this rests on. Try one
+  gzipped blocked line against the deployed service before building the rest.
+- **Rejected alternative: base64.** It hides the strings from a naive matcher,
+  but grows every upload by a third, and a firewall that decodes base64 would
+  catch it anyway.
+
+It wasn't built on deployment day because it changes the ingest path — the part
+of the system everything else depends on — and a decompression cap written in a
+hurry is a denial-of-service hole waiting to be found.
