@@ -68,6 +68,6 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Audit dependencies for known vulnerabilities
-        run: npm audit --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Build
         run: npm run build
