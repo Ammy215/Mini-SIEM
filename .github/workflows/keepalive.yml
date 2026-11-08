@@ -44,7 +44,8 @@ jobs:
         run: |
           set -uo pipefail
 
-          base="${RENDER_HEALTH_URL%/}"
+          base="$(printf '%s' "$RENDER_HEALTH_URL" | tr -cd 'A-Za-z0-9:/._-')"
+          base="${base%/}"
           if [ -z "$base" ]; then
             # Before the first deploy there is nothing to check. A scheduled run
             # says so and passes rather than failing every 12 hours; a manual
