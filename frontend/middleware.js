@@ -8,7 +8,7 @@
 
 export const config = { matcher: '/api/:path*' }
 
-const API_ORIGIN = 'https://mini-siem-api-ga6i.onrender.com'
+const API_ORIGIN = 'https://mini-siem-api-two.onrender.com'
 
 export default function middleware(request) {
   // Trimmed on both sides: a pasted trailing newline would otherwise lock the app out.
